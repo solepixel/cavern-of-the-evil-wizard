@@ -3,19 +3,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { Heart, Backpack, Map as MapIcon, Save, Settings as CogIcon, Play, AlertTriangle, Volume2, VolumeX, Volume1 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { GameState, Scene } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
-import { processCommand, loadGame, loadSaveSlot, listSaveSlots, saveCheckpoint, saveGame, SYS_PREFIX, sysLine } from './lib/gameEngine';
+import {
+  processCommand,
+  loadGame,
+  loadSaveSlot,
+  deleteSaveSlot,
+  listSaveSlots,
+  updateSaveSlotNote,
+  resumeFromCheckpointWithFeedback,
+  saveCheckpoint,
+  saveGame,
+  FATAL_PREFIX,
+  SYS_PREFIX,
+  sysLine,
+} from './lib/gameEngine';
 import NamingScreen from './components/NamingScreen';
 import Cutscene from './components/Cutscene';
 import Typewriter from './components/Typewriter';
 import InventoryAnimation from './components/InventoryAnimation';
 import SettingsModal from './components/SettingsModal';
 import InfoModal, { InfoModalKind } from './components/InfoModal';
+import DevDebugModal from './components/DevDebugModal';
 import LoadGameModal from './components/LoadGameModal';
 import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/audioService';
 
@@ -97,7 +111,7 @@ function getCommandSuggestions(params: {
   };
 
   // Common verbs
-  ['look', 'inventory', 'map', 'help'].forEach((c) => suggestions.add(c));
+  ['look', 'inventory', 'map', 'help', 'examine self'].forEach((c) => suggestions.add(c));
 
   // Exits as simple "go <dir>"
   Object.keys(scene.exits ?? {}).forEach((dir) => suggestions.add(`go ${dir}`));
@@ -123,6 +137,18 @@ function getCommandSuggestions(params: {
     suggestions.add('use coin in machine');
   }
 
+  if (params.scene.id === 'bedroom') {
+    suggestions.add('explore the room');
+  }
+
+  if (params.state.inventory.includes('warm_clothes') && !params.state.equippedItemIds?.includes('warm_clothes')) {
+    suggestions.add('equip hoodie');
+    suggestions.add('equip warm clothes');
+  }
+  if (params.state.equippedItemIds?.includes('warm_clothes')) {
+    suggestions.add('unequip hoodie');
+  }
+
   // Filter
   const filtered = Array.from(suggestions).filter((s) => s.toLowerCase().startsWith(q) && allowSuggestion(s));
   filtered.sort((a, b) => a.length - b.length);
@@ -130,6 +156,8 @@ function getCommandSuggestions(params: {
 }
 
 export default function App() {
+  const hoverUi = () => audioService.playHoverThrottled();
+
   const [state, setState] = useState<GameState>(INITIAL_STATE);
   const [inputValue, setInputValue] = useState('');
   const [skipTypewriter, setSkipTypewriter] = useState(false);
@@ -139,7 +167,8 @@ export default function App() {
   const [isAmbientMuted, setIsAmbientMuted] = useState(initialAudioPrefs.ambientMuted);
   const [isSfxMuted, setIsSfxMuted] = useState(initialAudioPrefs.sfxMuted);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [infoModalKind, setInfoModalKind] = useState<InfoModalKind | null>(null);
+  /** `log` opens the dev DATA_LOG debug panel (localhost / dev only). */
+  const [infoModalKind, setInfoModalKind] = useState<InfoModalKind | 'log' | null>(null);
   const [sceneInteractionsVisible, setSceneInteractionsVisible] = useState(true);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
@@ -149,7 +178,7 @@ export default function App() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  /** Ambient BGM: title screen, naming, and gameplay (not when muted). */
+  /** Ambient BGM: title screen, naming, and gameplay (not when muted). Volume is applied via slider handlers, not here, so we do not call play() on every volume tick. */
   useEffect(() => {
     audioService.applyPreferences({
       ambientVolume,
@@ -160,7 +189,7 @@ export default function App() {
     });
     if (isMuted) return;
     audioService.playAmbient();
-  }, [state.gameStarted, state.namingPhase, isMuted, ambientVolume, sfxVolume, isAmbientMuted, isSfxMuted]);
+  }, [state.gameStarted, state.namingPhase, isMuted, isAmbientMuted, isSfxMuted]);
 
   /** Retry playback after browser autoplay block — first interaction on title screen. */
   useEffect(() => {
@@ -199,6 +228,21 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isSettingsOpen, infoModalKind]);
+
+  const isCutscene = Boolean(state.gameStarted && !state.namingPhase && state.currentSceneId.startsWith('cutscene_'));
+  const [postCutsceneChromeKey, setPostCutsceneChromeKey] = useState(0);
+  const cutsceneSweepRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (isCutscene) {
+      cutsceneSweepRef.current = true;
+      return;
+    }
+    if (cutsceneSweepRef.current) {
+      cutsceneSweepRef.current = false;
+      setPostCutsceneChromeKey((k) => k + 1);
+    }
+  }, [isCutscene]);
 
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
@@ -272,6 +316,10 @@ export default function App() {
     }));
   };
 
+  const cancelNaming = useCallback(() => {
+    setState((prev) => ({ ...prev, namingPhase: false }));
+  }, []);
+
   const toggleMute = () => {
     const muted = audioService.toggleMute();
     setIsMuted(muted);
@@ -318,12 +366,23 @@ export default function App() {
     audioService.stopAmbient();
   }, []);
 
+  const isDevDebugUi =
+    typeof window !== 'undefined' &&
+    (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+
   const infoModal = (
-    <InfoModal
-      kind={infoModalKind}
-      onClose={() => setInfoModalKind(null)}
-      onRebootConfirm={handleRebootConfirm}
-    />
+    <>
+      {infoModalKind === 'log' && isDevDebugUi && (
+        <DevDebugModal state={state} onClose={() => setInfoModalKind(null)} />
+      )}
+      {infoModalKind && infoModalKind !== 'log' && (
+        <InfoModal
+          kind={infoModalKind as InfoModalKind}
+          onClose={() => setInfoModalKind(null)}
+          onRebootConfirm={handleRebootConfirm}
+        />
+      )}
+    </>
   );
 
   const loadModal = (
@@ -339,6 +398,14 @@ export default function App() {
         } else {
           alert('Failed to load that save slot.');
         }
+      }}
+      onDeleteSlot={(slotId) => {
+        deleteSaveSlot(slotId);
+        setSaveSlots(listSaveSlots());
+      }}
+      onSaveSlotNote={(slotId, note) => {
+        updateSaveSlotNote(slotId, note);
+        setSaveSlots(listSaveSlots());
       }}
     />
   );
@@ -375,25 +442,29 @@ export default function App() {
               <div className="flex flex-col gap-4 border-2 border-[#35ebeb]/30 bg-[#131313] p-8">
                 <button
                   type="button"
+                  onMouseEnter={hoverUi}
                   onClick={startGame}
-                  className="group flex w-full items-center justify-between bg-[#ffffff] px-6 py-4 font-bold uppercase tracking-widest text-[#002020] transition-all hover:bg-[#35ebeb]"
+                  className="flex w-full items-center justify-between bg-[#ffffff] px-6 py-4 font-bold uppercase tracking-widest text-[#002020] transition-all hover:bg-[#35ebeb]"
                 >
                   <span>START GAME</span>
-                  <Play className="opacity-0 transition-opacity group-hover:opacity-100" size={20} />
+                  <Play className="shrink-0" size={20} />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const slots = listSaveSlots();
-                    setSaveSlots(slots);
-                    setIsLoadModalOpen(true);
-                  }}
-                  className="group flex w-full items-center justify-between border-2 border-[#ffaaf6] px-6 py-4 font-bold uppercase tracking-widest text-[#ffaaf6] transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
-                >
-                  <span>LOAD GAME</span>
-                  <Save className="opacity-0 transition-opacity group-hover:opacity-100" size={20} />
-                </button>
+                {listSaveSlots().length > 0 && (
+                  <button
+                    type="button"
+                    onMouseEnter={hoverUi}
+                    onClick={() => {
+                      const slots = listSaveSlots();
+                      setSaveSlots(slots);
+                      setIsLoadModalOpen(true);
+                    }}
+                    className="flex w-full items-center justify-between border-2 border-[#ffaaf6] px-6 py-4 font-bold uppercase tracking-widest text-[#ffaaf6] transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
+                  >
+                    <span>LOAD GAME</span>
+                    <Save className="shrink-0" size={20} />
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
@@ -402,7 +473,7 @@ export default function App() {
             <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 md:gap-8">
               <div className="group flex items-center gap-2">
-                <button type="button" onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+                <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
                   {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
                 </button>
                 <input
@@ -416,7 +487,7 @@ export default function App() {
                   aria-label="Volume"
                 />
               </div>
-              <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
                 SYSTEM_REBOOT
               </button>
             </div>
@@ -431,7 +502,7 @@ export default function App() {
   if (state.namingPhase) {
     return (
       <>
-        <NamingScreen onComplete={completeNaming} />
+        <NamingScreen onComplete={completeNaming} onCancel={cancelNaming} />
         {infoModal}
         {loadModal}
       </>
@@ -439,7 +510,6 @@ export default function App() {
   }
 
   const currentScene = SCENES[state.currentSceneId];
-  const isCutscene = state.currentSceneId.startsWith('cutscene_');
   const interactionLabels = getSceneInteractionLabels(currentScene);
   const sceneObjectRows = getSceneObjectRows(currentScene, state);
   const commandSuggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
@@ -469,17 +539,20 @@ export default function App() {
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
-                initial={{ x: -300, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -300, opacity: 0 }}
-                transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                key={`left-${postCutsceneChromeKey}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.32 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className="z-40 flex w-64 flex-col border-r-4 border-[#353535] bg-[#1b1b1b]"
               >
                 <div className="border-b-4 border-[#353535] p-6">
                   <div className="mb-2 flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535]">
                       <img
-                        src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${state.playerName}`}
+                        src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(
+                          [state.playerName, ...(state.equippedItemIds ?? [])].join('|'),
+                        )}`}
                         alt=""
                         className="h-full w-full object-cover"
                       />
@@ -499,6 +572,7 @@ export default function App() {
                 <nav className="flex-1 py-4">
                   <button
                     type="button"
+                    onMouseEnter={hoverUi}
                     onClick={() => setSceneInteractionsVisible((v) => !v)}
                     className="flex w-full items-center gap-4 bg-[#ffffff] p-4 text-sm font-black uppercase tracking-tighter text-[#002020]"
                   >
@@ -506,6 +580,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
+                    onMouseEnter={hoverUi}
                     onClick={() => handleCommand(undefined, 'view inventory')}
                     className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
                   >
@@ -514,6 +589,7 @@ export default function App() {
                   {state.hasMap && (
                     <button
                       type="button"
+                      onMouseEnter={hoverUi}
                       onClick={() => handleCommand(undefined, 'view map')}
                       className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
                     >
@@ -525,6 +601,7 @@ export default function App() {
                 <div className="mt-auto p-6">
                   <button
                     type="button"
+                    onMouseEnter={hoverUi}
                     onClick={() => setIsSettingsOpen(true)}
                     className="flex w-full items-center justify-center gap-2 border-2 border-[#35ebeb] py-3 text-xs font-black uppercase text-[#35ebeb] transition-all hover:bg-[#35ebeb] hover:text-[#002020]"
                   >
@@ -545,29 +622,33 @@ export default function App() {
                   exit={{ opacity: 0 }}
                   className="absolute inset-0"
                 >
-                  {currentScene.image ? (
-                    <motion.div
-                      layoutId={state.currentSceneId === 'bedroom' ? 'viewport-scene-panel' : undefined}
-                      className="absolute inset-0 h-full w-full"
-                      transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.85 }}
-                    >
-                      <img
-                        src={currentScene.image}
-                        alt={currentScene.title}
-                        className="h-full w-full object-cover opacity-80"
-                        referrerPolicy="no-referrer"
-                      />
-                    </motion.div>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center opacity-40">
-                      <div className="text-center font-mono text-[#35ebeb]">
-                        <div className="mb-4 text-4xl">[ VISUAL FEED ]</div>
-                        <div className="text-xl uppercase tracking-widest">
-                          {currentScene.title.replace('{{name}}', state.playerName)}
+                  {(() => {
+                    const viewportSrc = currentScene.image ?? currentScene.background;
+                    const handoffId = currentScene.viewportHandoffLayoutId;
+                    return viewportSrc ? (
+                      <motion.div
+                        layoutId={!isCutscene && handoffId ? handoffId : undefined}
+                        className="absolute inset-0 h-full w-full"
+                        transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.85 }}
+                      >
+                        <img
+                          src={viewportSrc}
+                          alt={currentScene.title}
+                          className="h-full w-full object-cover opacity-80"
+                          referrerPolicy="no-referrer"
+                        />
+                      </motion.div>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center opacity-40">
+                        <div className="text-center font-mono text-[#35ebeb]">
+                          <div className="mb-4 text-4xl">[ VISUAL FEED ]</div>
+                          <div className="text-xl uppercase tracking-widest">
+                            {currentScene.title.replace('{{name}}', state.playerName)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </motion.div>
               </AnimatePresence>
 
@@ -588,24 +669,41 @@ export default function App() {
               </div>
 
               {state.isGameOver && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-red-900/50">
+                <div className="pointer-events-auto absolute inset-0 z-[80] flex flex-col items-center justify-center bg-red-900/50">
                   <AlertTriangle className="mb-4 animate-pulse text-white" size={64} />
                   <h2 className="mb-8 text-6xl font-black tracking-widest text-white">GAME OVER</h2>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (state.lastCheckpoint) setState(state.lastCheckpoint);
-                      else setState(INITIAL_STATE);
+                    onMouseEnter={hoverUi}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSkipTypewriter(true);
+                      if (state.lastCheckpoint) {
+                        setState(resumeFromCheckpointWithFeedback(state.lastCheckpoint));
+                      } else {
+                        setState({ ...INITIAL_STATE, playerName: state.playerName });
+                      }
                     }}
                     className="bg-white px-8 py-4 font-black uppercase tracking-widest text-red-900 transition-all hover:bg-[#35ebeb]"
                   >
-                    RELOAD LAST CHECKPOINT
+                    {state.lastCheckpoint ? 'RELOAD LAST CHECKPOINT' : 'START OVER'}
                   </button>
                 </div>
               )}
             </section>
 
-            <section className="flex flex-1 flex-col overflow-hidden p-6" onClick={() => setSkipTypewriter(true)}>
+            <motion.section
+              key={postCutsceneChromeKey}
+              initial={postCutsceneChromeKey === 0 ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{
+                duration: postCutsceneChromeKey === 0 ? 0 : 0.55,
+                delay: postCutsceneChromeKey === 0 ? 0 : 0.36,
+                ease: [0.4, 0, 0.2, 1],
+              }}
+              className="flex flex-1 flex-col overflow-hidden p-6"
+              onClick={() => setSkipTypewriter(true)}
+            >
               <div className="terminal-scroll mb-4 flex-1 space-y-4 overflow-y-auto pr-4 font-mono">
                 {state.history.map((line, i) => {
                   const isLast = i === state.history.length - 1;
@@ -620,6 +718,20 @@ export default function App() {
                     return (
                       <div key={i} className="text-sm text-[#a8a8a8]">
                         {line.slice(SYS_PREFIX.length)}
+                      </div>
+                    );
+                  }
+                  if (line.startsWith(FATAL_PREFIX)) {
+                    const deathText = line.slice(FATAL_PREFIX.length);
+                    return (
+                      <div key={i} className="font-black uppercase tracking-widest text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.45)]">
+                        <Typewriter
+                          text={deathText}
+                          disableInlineHighlights
+                          skip={skipTypewriter || !isLast}
+                          onComplete={() => handleTypewriterComplete(i)}
+                          onContentChange={scrollTerminalToEnd}
+                        />
                       </div>
                     );
                   }
@@ -656,6 +768,7 @@ export default function App() {
                         <button
                           key={s}
                           type="button"
+                          onMouseEnter={hoverUi}
                           onClick={() => {
                             setInputValue(s);
                           }}
@@ -674,16 +787,17 @@ export default function App() {
                   </div>
                 )}
               </form>
-            </section>
+            </motion.section>
           </main>
 
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
-                initial={{ x: 300, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 300, opacity: 0 }}
-                transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                key={`right-${postCutsceneChromeKey}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.34 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className="z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0"
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
@@ -776,7 +890,7 @@ export default function App() {
           <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
           <div className="flex items-center gap-8">
             <div className="group flex items-center gap-2">
-              <button type="button" onClick={toggleMute} className="hover:text-[#35ebeb]">
+              <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]">
                 {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
               </button>
               <input
@@ -789,13 +903,15 @@ export default function App() {
                 className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30"
               />
             </div>
-            <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
               SYSTEM_REBOOT
             </button>
-            <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
-              DATA_LOG
-            </button>
-            <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
+            {isDevDebugUi && (
+              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
+                DATA_LOG
+              </button>
+            )}
+            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
               HELP
             </button>
           </div>

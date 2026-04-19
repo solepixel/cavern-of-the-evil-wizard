@@ -1,4 +1,11 @@
-import { GameState, Item, Scene, GameObject, INITIAL_STATE as BASE_INITIAL_STATE } from './types';
+import {
+  GameState,
+  Item,
+  Scene,
+  GameObject,
+  INITIAL_STATE as BASE_INITIAL_STATE,
+  REUSE_INTERACTION_EXAMINE,
+} from './types';
 
 export const ITEMS: Record<string, Item> = {
   'old_key': {
@@ -26,8 +33,12 @@ export const ITEMS: Record<string, Item> = {
     id: 'warm_clothes',
     name: 'Adult-Sized Hoodie',
     description: 'A red hoodie that actually fits your grown-up body.',
-    useText: 'You put on the hoodie. You feel much less ridiculous now.',
-    icon: 'Shirt'
+    useText: 'You pull on the hoodie. It actually fits—warm, soft, and a lot less ridiculous than dinosaur pajamas alone.',
+    icon: 'Shirt',
+    equippable: true,
+    equipmentSlot: 'torso',
+    wearDescription:
+      "Over your stretched dinosaur pajamas you're wearing the adult-sized red hoodie from the wardrobe. You almost look like a normal person—almost.",
   },
   'flashlight': {
     id: 'flashlight',
@@ -66,20 +77,35 @@ export const OBJECTS: Record<string, GameObject> = {
     initialState: 'closed',
     descriptions: {
       'closed': "It's a heavy oak wardrobe. It looks like it might contain something useful.",
-      'open': "It's an opened wardrobe. It once held your childhood clothes, but now it's mostly empty except for some dust."
+      'open': "It's an opened wardrobe. It holds your childhood clothes, but none of that appears to fit you anymore.",
     },
     interactions: [
       {
+        id: 'wardrobe_look',
         regex: 'look( at)?( the)? wardrobe',
-        text: "It's a heavy oak wardrobe. It looks like it might contain something useful."
+        text: "It appears to be the only piece of furniture in the room.",
       },
       {
+        id: 'wardrobe_open',
         regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
-        text: "You open the wardrobe. Inside, you find a red hoodie that looks like it might fit you, and an OLD BRASS KEY hanging on a hook.",
+        text: "You open the wardrobe. Inside, you find a red hoodie that looks too small for you in your current condition. You also find an OLD BRASS KEY hanging on a hook.",
         getItem: 'old_key',
         setState: 'open',
-        redundantMessage: 'The wardrobe is already open.',
-      }
+        playSound: 'wood_creak_open',
+        redundantMessage: 'The wardrobe is already open. There is nothing else of use to you in the wardrobe.',
+      },
+      {
+        id: 'wardrobe_close',
+        regex: 'close( the)? wardrobe',
+        text: "You close the wardrobe. It's now closed.",
+        setState: 'closed',
+        playSound: 'wood_creak_close',
+        redundantMessage: "The wardrobe is closed. It can't be closed anymore. You've closed it the most it can be closed.",
+      },
+      {
+        regex: 'rummage (in|through)( the)? wardrobe',
+        reuseInteractionId: 'wardrobe_open',
+      },
     ]
   },
   'rug': {
@@ -93,13 +119,18 @@ export const OBJECTS: Record<string, GameObject> = {
     interactions: [
       {
         regex: 'look( at)?( the)? rug',
-        text: "A faded blue rug with a space shuttle pattern. It's slightly bunched up near the corner."
+        reuseInteractionId: "examine"
       },
       {
+        id: 'rug_under',
         regex: '(look|search|flip|lift)( under)?( the)? rug',
         text: "You lift the corner of the rug. Just dust bunnies and a stray penny. Nothing useful.",
         setState: 'flipped',
         redundantMessage: "You've already checked under the rug. There's nothing new.",
+      },
+      {
+        regex: 'peek (under|beneath)( the)? rug',
+        reuseInteractionId: 'rug_under',
       },
       {
         regex: 'fix( the)? rug',
@@ -128,23 +159,28 @@ export const OBJECTS: Record<string, GameObject> = {
     name: 'Door',
     initialState: 'locked',
     descriptions: {
-      'locked': "A sturdy wooden door. It's locked from the inside.",
+      'locked': "A sturdy wooden door. It's locked from the outside. Don't ask how you somehow got locked in your own room. That's just how the story starts...",
       'unlocked': "The door is now unlocked."
     },
     interactions: [
       {
-        regex: '(open|unlock)( the)? door',
-        text: "The door is locked. You'll need a key to get out."
-      },
-      {
-        regex: '(use|insert) (old_key|key) (on|in|with) door',
-        text: "You unlock the door and step out into the hallway.",
+        regex: '(use|insert) (old_key|key) (on|in|with)( the)? door',
+        text: "You unlock the door and step out into the hallway. You feel chill bumps all over since you are barely clothed.",
         nextScene: 'hallway',
         removeItem: 'old_key',
         setState: 'unlocked',
         redundantMessage: 'The door is already unlocked.',
-      }
-    ]
+        missingRequirementsMessage: "You don't have a key to use on the door.",
+      },
+      {
+        regex: '(open|unlock)( the)? door',
+        whenObjectState: 'locked',
+        requiresInventory: ['old_key'],
+        text: "How do you propose to open the door? Perhaps you'd like to use the key?",
+        missingRequirementsMessage: "You have no way to open the locked door.",
+        redundantMessage: "The door is already unlocked.",
+      },
+    ],
   },
   'bed': {
     id: 'bed',
@@ -166,6 +202,12 @@ export const OBJECTS: Record<string, GameObject> = {
         regex: '(get( back)? in|go back|lie down on)( ?to)? bed',
         text: "You try to curl up in the tiny bed, but you've outgrown this life. You need to move forward.",
         setState: 'unmade'
+      },
+      {
+        regex: 'jump (on(to)?)( the)? bed',
+        text: "You attempt to jump on the bed. You are too tall and you hit your head on the ceiling. You land awkwardly on your ankle and fall too the floor. Unfortunately, your neck breaks your fall and you are dead.",
+        isDeath: true,
+        playSound: ['bone_break', 'death_rattle'],
       }
     ]
   },
@@ -179,8 +221,13 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
+        id: 'gadget_look',
         regex: 'look( at)?( the)? gadget',
-        text: "It's a prototype for a digital comic book. It looks like something you'd design."
+        text: "It's a prototype for a digital comic book. It looks like something you'd design.",
+      },
+      {
+        regex: 'inspect( the)? gadget',
+        reuseInteractionId: REUSE_INTERACTION_EXAMINE,
       },
       {
         regex: '(take|get|pick up) gadget',
@@ -201,15 +248,23 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
+        id: 'zoltar_look',
         regex: 'look( at)?( the)? machine',
-        text: "It's a Zoltar machine. The eyes seem to glow with an inner light. There's a slot for a coin."
+        text: "It's a Zoltar machine. The eyes seem to glow with an inner light. There's a slot for a coin.",
+      },
+      {
+        regex: 'inspect( the)? machine',
+        reuseInteractionId: 'examine',
       },
       {
         regex: '(use|insert|put) (magic_coin|coin) (on|in) machine',
+        requiresInventory: ['magic_coin'],
+        removeItem: 'magic_coin',
         text: "You insert the coin. Zoltar's eyes light up. 'I WISH I WERE BIG,' you whisper. A card slides out: 'YOUR WISH IS GRANTED. BUT BEWARE THE COST.'",
         getItem: 'mystic_pendant',
         setState: 'active',
         redundantMessage: "Zoltar's eyes are already glowing—you've used the machine.",
+        missingRequirementsMessage: "You don't have the magic carnival coin.",
       }
     ]
   }
@@ -218,9 +273,15 @@ export const OBJECTS: Record<string, GameObject> = {
 export const SCENES: Record<string, Scene> = {
   'bedroom': {
     id: 'bedroom',
+    viewportHandoffLayoutId: 'viewport-scene-panel',
     title: "{{name}}'s Bedroom",
     description:
-      "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur pajamas, but they're stretched to their limit across your adult frame. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
+      "You're in your childhood bedroom—ceiling too low, bunk too short, 80s posters watching you like old friends. Your dinosaur pajamas strain at the seams. A WARDROBE, shuttle-pattern RUG, WINDOW, and DOOR are the obvious landmarks.",
+    examineRefreshText:
+      "Looking around the room, you see the bunk BED, posters on the walls, the WARDROBE, RUG, WINDOW, and DOOR. Nothing moved while you weren't looking, but the proportions still feel borrowed from someone half your size.",
+    onLoad: {
+      text: "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur pajamas, but they're stretched to their limit across your adult frame. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
+    },
     image: "/assets/images/bedroom.png",
     isCheckpoint: true,
     objects: ['bed', 'wardrobe', 'rug', 'window', 'door'],
@@ -495,6 +556,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'cutscene_intro': {
     id: 'cutscene_intro',
+    viewportHandoffLayoutId: 'viewport-scene-panel',
     title: 'A Strange Awakening',
     description: "You awake in a familiar room, however, something feels .... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
     background: "/assets/images/bedroom.png",
@@ -522,5 +584,7 @@ export const INITIAL_STATE: GameState = {
   namingPhase: false,
   uiVisible: false,
   hasMap: false,
-  pendingItem: null
+  pendingItem: null,
+  focusedObjectId: undefined,
+  equippedItemIds: [],
 };

@@ -1,91 +1,156 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { ChevronLeft, Delete } from 'lucide-react';
+import { audioService } from '../lib/audioService';
+
+const NAMING_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?'.split('');
 
 interface NamingScreenProps {
   onComplete: (name: string) => void;
+  onCancel: () => void;
 }
 
-export default function NamingScreen({ onComplete }: NamingScreenProps) {
+export default function NamingScreen({ onComplete, onCancel }: NamingScreenProps) {
   const [name, setName] = useState('');
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!? '.split('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const hoverUi = () => audioService.playHoverThrottled();
+
+  const tryStart = () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setNameError('Enter a name before starting your adventure.');
+      return;
+    }
+    setNameError(null);
+    onComplete(trimmed);
+  };
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+        return;
+      }
       if (e.key === 'Backspace') {
-        handleBackspace();
+        setName((prev) => prev.slice(0, -1));
+        setNameError(null);
       } else if (e.key === 'Enter') {
-        if (name.length > 0) onComplete(name);
-        else onComplete('Josh');
-      } else if (e.key.length === 1 && alphabet.includes(e.key.toUpperCase()) || alphabet.includes(e.key)) {
+        e.preventDefault();
+        const trimmed = name.trim();
+        if (!trimmed) {
+          setNameError('Enter a name before starting your adventure.');
+        } else {
+          setNameError(null);
+          onComplete(trimmed);
+        }
+      } else if (e.key.length === 1 && NAMING_CHARSET.includes(e.key)) {
         if (name.length < 12) {
-          setName(prev => prev + e.key);
+          setName((prev) => prev + e.key);
+          setNameError(null);
+        }
+      } else if (e.key === ' ') {
+        if (name.length < 12) {
+          setName((prev) => prev + ' ');
+          setNameError(null);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [name, onComplete]);
+  }, [name, onComplete, onCancel]);
 
   const handleCharClick = (char: string) => {
     if (name.length < 12) {
-      setName(prev => prev + char);
+      setName((prev) => prev + char);
+      setNameError(null);
     }
   };
 
   const handleBackspace = () => {
-    setName(prev => prev.slice(0, -1));
+    setName((prev) => prev.slice(0, -1));
+    setNameError(null);
   };
 
   return (
-    <div className="fixed inset-0 bg-[#131313] flex flex-col items-center justify-center z-50 p-4">
-      <motion.div 
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#131313] p-4">
+      <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl border-4 border-[#35ebeb] p-8 bg-[#1b1b1b] relative"
+        className="relative w-full max-w-2xl border-4 border-[#35ebeb] bg-[#1b1b1b] p-8"
       >
-        <div className="absolute -top-1 -left-1 w-4 h-4 bg-[#35ebeb]" />
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-[#35ebeb]" />
+        <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
+        <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
+        <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-[#35ebeb]" />
+        <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#35ebeb]" />
 
-        <h2 className="text-2xl font-black text-[#ffaaf6] mb-8 text-center tracking-widest uppercase">
-          REGISTER YOUR NAME
-        </h2>
+        <div className="mb-6 min-h-[3rem] rounded border-2 border-transparent px-2 py-2 text-center">
+          {nameError ? (
+            <p className="text-sm font-bold uppercase leading-snug tracking-wide text-red-400">{nameError}</p>
+          ) : null}
+        </div>
+
+        <h2 className="mb-8 text-center text-2xl font-black uppercase tracking-widest text-[#ffaaf6]">REGISTER YOUR NAME</h2>
 
         <div className="mb-12 flex justify-center">
-          <div className="border-b-4 border-[#35ebeb] px-4 py-2 min-w-[200px] text-center">
-            <span className="text-4xl font-mono text-[#ffffff] tracking-widest uppercase">
+          <div className="min-w-[200px] border-b-4 border-[#35ebeb] px-4 py-2 text-center">
+            <span className="text-4xl font-mono uppercase tracking-widest text-[#ffffff]">
               {name}
-              <span className="inline-block w-4 h-8 bg-[#35ebeb] ml-1 cursor-blink" />
+              <span className="ml-1 inline-block h-8 w-4 cursor-blink bg-[#35ebeb]" />
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-8 md:grid-cols-10 gap-2 mb-8">
-          {alphabet.map(char => (
+        <div className="mb-8 grid grid-cols-8 gap-2 md:grid-cols-10">
+          {NAMING_CHARSET.map((char) => (
             <button
               key={char}
+              type="button"
+              onMouseEnter={hoverUi}
               onClick={() => handleCharClick(char)}
-              className="p-2 text-xl font-mono text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#131313] transition-colors"
+              className="p-2 font-mono text-xl text-[#35ebeb] transition-colors hover:bg-[#35ebeb] hover:text-[#131313]"
             >
-              {char === ' ' ? '␣' : char}
+              {char}
             </button>
           ))}
-        </div>
-
-        <div className="flex justify-between gap-4">
           <button
-            onClick={handleBackspace}
-            className="flex-1 border-2 border-[#ffaaf6] text-[#ffaaf6] py-3 font-bold hover:bg-[#ffaaf6] hover:text-[#131313] transition-all uppercase tracking-widest"
+            type="button"
+            onMouseEnter={hoverUi}
+            onClick={() => handleCharClick(' ')}
+            className="p-2 font-mono text-xl text-[#35ebeb] transition-colors hover:bg-[#35ebeb] hover:text-[#131313]"
+            aria-label="Space"
           >
-            BACKSPACE
+            ␣
           </button>
           <button
-            onClick={() => onComplete(name || 'Josh')}
-            className="flex-1 bg-[#35ebeb] text-[#131313] py-3 font-bold hover:bg-[#ffffff] transition-all uppercase tracking-widest"
+            type="button"
+            onMouseEnter={hoverUi}
+            onClick={handleBackspace}
+            className="flex items-center justify-center p-2 text-[#35ebeb] transition-colors hover:bg-[#35ebeb] hover:text-[#131313]"
+            aria-label="Backspace"
           >
-            START ADVENTURE
+            <Delete size={22} strokeWidth={2.25} />
+          </button>
+        </div>
+
+        <div className="flex items-stretch justify-between gap-4">
+          <button
+            type="button"
+            onMouseEnter={hoverUi}
+            onClick={onCancel}
+            className="inline-flex shrink-0 items-center justify-center gap-1 border-2 border-[#ffaaf6] px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-[#ffaaf6] transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
+          >
+            <ChevronLeft size={16} strokeWidth={3} className="-mr-0.5 shrink-0" aria-hidden />
+            Back
+          </button>
+          <button
+            type="button"
+            onMouseEnter={hoverUi}
+            onClick={tryStart}
+            className="min-w-0 flex-1 bg-[#35ebeb] py-4 text-xs font-black uppercase tracking-widest text-[#131313] transition-all hover:bg-[#ffffff]"
+          >
+            Start adventure
           </button>
         </div>
       </motion.div>

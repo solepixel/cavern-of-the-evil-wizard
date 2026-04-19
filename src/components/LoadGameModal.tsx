@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X } from 'lucide-react';
+import { Pencil, Trash2, X } from 'lucide-react';
 import { SaveSlotSummary } from '../lib/gameEngine';
 import { SCENES } from '../gameData';
+import { audioService } from '../lib/audioService';
 
 function formatDate(ms: number) {
   try {
@@ -23,9 +24,44 @@ interface LoadGameModalProps {
   slots: SaveSlotSummary[];
   onClose: () => void;
   onLoad: (slotId: string) => void;
+  onDeleteSlot: (slotId: string) => void;
+  onSaveSlotNote: (slotId: string, note: string) => void;
 }
 
-export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGameModalProps) {
+export default function LoadGameModal({
+  isOpen,
+  slots,
+  onClose,
+  onLoad,
+  onDeleteSlot,
+  onSaveSlotNote,
+}: LoadGameModalProps) {
+  const hoverUi = () => audioService.playHoverThrottled();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftNote, setDraftNote] = useState('');
+
+  const beginEdit = (s: SaveSlotSummary) => {
+    setEditingId(s.id);
+    setDraftNote(s.note ?? '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraftNote('');
+  };
+
+  const saveNote = (id: string) => {
+    onSaveSlotNote(id, draftNote);
+    cancelEdit();
+  };
+
+  const tryDelete = (id: string) => {
+    if (window.confirm('Delete this checkpoint? This cannot be undone.')) {
+      onDeleteSlot(id);
+      if (editingId === id) cancelEdit();
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -42,6 +78,7 @@ export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGa
             initial={{ scale: 0.95, opacity: 0, y: 12 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 12 }}
+            onClick={(e) => e.stopPropagation()}
             className="relative z-10 w-full max-w-lg border-4 border-[#35ebeb] bg-[#1b1b1b] p-8"
           >
             <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
@@ -51,12 +88,12 @@ export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGa
 
             <div className="mb-6 flex items-start justify-between gap-4">
               <h2 className="text-xl font-black uppercase tracking-widest text-[#ffaaf6]">LOAD GAME</h2>
-              <button type="button" onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
+              <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
                 <X size={24} />
               </button>
             </div>
 
-            <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
               {slots.length === 0 ? (
                 <div className="border-l-4 border-[#353535] bg-[#131313] p-4 text-sm text-[#e2e2e2]/70">
                   No save slots found yet.
@@ -64,21 +101,88 @@ export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGa
               ) : (
                 slots.map((s) => {
                   const sceneTitle = SCENES[s.sceneId]?.title ?? s.sceneId;
+                  const isEditing = editingId === s.id;
                   return (
-                    <button
+                    <div
                       key={s.id}
-                      type="button"
-                      onClick={() => onLoad(s.id)}
-                      className="w-full border-l-4 border-[#35ebeb] bg-[#131313] p-4 text-left transition-all hover:bg-[#353535]"
+                      className="border-l-4 border-[#35ebeb] bg-[#131313] p-4 text-left transition-colors hover:bg-[#1f1f1f]"
                     >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="text-sm font-black uppercase tracking-wider text-white">{s.playerName || 'PLAYER'}</div>
-                        <div className="text-[10px] uppercase tracking-widest text-[#35ebeb]/80">{formatDate(s.savedAt)}</div>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <span className="text-sm font-black uppercase tracking-wider text-white">{s.playerName || 'PLAYER'}</span>
+                            <span className="text-[10px] uppercase tracking-widest text-[#35ebeb]/80">{formatDate(s.savedAt)}</span>
+                          </div>
+                          <div className="mt-1 text-[10px] uppercase tracking-widest text-[#e2e2e2]/70">
+                            {sceneTitle.replace('{{name}}', s.playerName)}
+                          </div>
+                          {s.note ? (
+                            <div className="mt-2 text-xs font-bold normal-case tracking-normal text-[#ffaaf6]">&ldquo;{s.note}&rdquo;</div>
+                          ) : (
+                            <div className="mt-2 text-[10px] uppercase tracking-widest text-[#e2e2e2]/40">No checkpoint note</div>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onMouseEnter={hoverUi}
+                            onClick={() => onLoad(s.id)}
+                            className="border-2 border-[#35ebeb] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
+                          >
+                            Load
+                          </button>
+                          <button
+                            type="button"
+                            onMouseEnter={hoverUi}
+                            onClick={() => (isEditing ? cancelEdit() : beginEdit(s))}
+                            className="border-2 border-[#ffaaf6]/70 p-2 text-[#ffaaf6] hover:bg-[#ffaaf6]/15"
+                            aria-label={isEditing ? 'Cancel note edit' : 'Edit checkpoint note'}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onMouseEnter={hoverUi}
+                            onClick={() => tryDelete(s.id)}
+                            className="border-2 border-red-500/60 p-2 text-red-400 hover:bg-red-500/15"
+                            aria-label="Delete checkpoint"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="mt-1 text-[10px] uppercase tracking-widest text-[#e2e2e2]/70">
-                        {sceneTitle.replace('{{name}}', s.playerName)}
-                      </div>
-                    </button>
+                      {isEditing && (
+                        <div className="mt-3 flex flex-col gap-2 border-t border-[#353535] pt-3">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/80">Checkpoint note</label>
+                          <input
+                            type="text"
+                            value={draftNote}
+                            onChange={(e) => setDraftNote(e.target.value)}
+                            maxLength={80}
+                            placeholder="e.g. After getting the key"
+                            className="border-2 border-[#35ebeb]/40 bg-[#131313] px-3 py-2 font-mono text-sm text-[#e2e2e2] placeholder:text-[#e2e2e2]/30 focus:border-[#35ebeb] focus:outline-none"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onMouseEnter={hoverUi}
+                              onClick={() => saveNote(s.id)}
+                              className="bg-[#35ebeb] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#002020] hover:bg-[#ffffff]"
+                            >
+                              Save note
+                            </button>
+                            <button
+                              type="button"
+                              onMouseEnter={hoverUi}
+                              onClick={cancelEdit}
+                              className="border-2 border-[#353535] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#e2e2e2]/80 hover:border-[#35ebeb]/50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })
               )}
@@ -86,6 +190,7 @@ export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGa
 
             <button
               type="button"
+              onMouseEnter={hoverUi}
               onClick={onClose}
               className="mt-6 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
             >
@@ -97,4 +202,3 @@ export default function LoadGameModal({ isOpen, slots, onClose, onLoad }: LoadGa
     </AnimatePresence>
   );
 }
-

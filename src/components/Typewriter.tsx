@@ -8,6 +8,8 @@ interface TypewriterProps {
   skip?: boolean;
   /** Fires when visible text grows (for scroll-into-view) */
   onContentChange?: () => void;
+  /** Skip ALL-CAPS / inventory word coloring so parent styles (e.g. fatal red) apply to the whole line. */
+  disableInlineHighlights?: boolean;
 }
 
 /** Wrap ALL-CAPS words (2+ letters) in styled spans — interaction hints. Skips fragments already rendered as nodes. */
@@ -38,7 +40,14 @@ function highlightAllCapsWords(parts: (string | React.ReactNode)[]): (string | R
   return out;
 }
 
-export default function Typewriter({ text, speed = 20, onComplete, skip = false, onContentChange }: TypewriterProps) {
+export default function Typewriter({
+  text,
+  speed = 20,
+  onComplete,
+  skip = false,
+  onContentChange,
+  disableInlineHighlights = false,
+}: TypewriterProps) {
   const segments = useMemo(() => text.split(/\n\n+/).filter((s) => s.length > 0), [text]);
   const [segmentIdx, setSegmentIdx] = useState(0);
   const [charIdx, setCharIdx] = useState(0);
@@ -120,6 +129,9 @@ export default function Typewriter({ text, speed = 20, onComplete, skip = false,
   }, [segmentIdx, charIdx, segments, speed, skip, text, done]);
 
   const renderHighlightedText = (content: string) => {
+    if (disableInlineHighlights) {
+      return content;
+    }
     let result: (string | React.ReactNode)[] = [content];
 
     const sortedItems = Object.values(ITEMS).sort((a, b) => b.name.length - a.name.length);
@@ -159,7 +171,9 @@ export default function Typewriter({ text, speed = 20, onComplete, skip = false,
     <div className="relative inline-block max-w-full whitespace-pre-wrap break-words">
       {renderHighlightedText(skip || done ? text : displayedText)}
       {showCaret && (
-        <span className="ml-1 inline-block h-4 w-2 animate-pulse align-middle bg-[#35ebeb]" />
+        <span
+          className={`ml-1 inline-block h-4 w-2 animate-pulse align-middle ${disableInlineHighlights ? 'bg-red-400' : 'bg-[#35ebeb]'}`}
+        />
       )}
     </div>
   );

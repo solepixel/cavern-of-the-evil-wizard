@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Volume2, VolumeX, Volume1, Save, LogOut } from 'lucide-react';
+import { audioService } from '../lib/audioService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export default function SettingsModal({
   isSfxMuted,
   onToggleSfxMute
 }: SettingsModalProps) {
+  const hoverUi = () => audioService.playHoverThrottled();
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -60,7 +63,7 @@ export default function SettingsModal({
 
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-black text-[#ffaaf6] tracking-widest uppercase">SYSTEM SETTINGS</h2>
-              <button onClick={onClose} className="text-[#35ebeb] hover:text-[#ffffff] transition-colors">
+              <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-[#ffffff] transition-colors">
                 <X size={24} />
               </button>
             </div>
@@ -77,6 +80,8 @@ export default function SettingsModal({
                 </div>
                 <div className="flex items-center gap-4">
                   <button 
+                    type="button"
+                    onMouseEnter={hoverUi}
                     onClick={onToggleMute}
                     className={`px-4 py-2 border-2 font-black text-xs tracking-widest transition-all ${isMuted ? 'bg-[#ffaaf6] border-[#ffaaf6] text-[#131313]' : 'border-[#35ebeb] text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#131313]'}`}
                   >
@@ -87,6 +92,7 @@ export default function SettingsModal({
                       <div className="w-14 text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/80">BGM</div>
                       <button
                         type="button"
+                        onMouseEnter={hoverUi}
                         onClick={onToggleAmbientMute}
                         className={`px-2 py-1 border text-[10px] font-black uppercase tracking-widest transition-all ${
                           isAmbientMuted
@@ -112,6 +118,7 @@ export default function SettingsModal({
                       <div className="w-14 text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/80">SFX</div>
                       <button
                         type="button"
+                        onMouseEnter={hoverUi}
                         onClick={onToggleSfxMute}
                         className={`px-2 py-1 border text-[10px] font-black uppercase tracking-widest transition-all ${
                           isSfxMuted
@@ -140,6 +147,8 @@ export default function SettingsModal({
               {/* Game Actions */}
               <div className="grid grid-cols-1 gap-4 pt-4 border-t border-[#353535]">
                 <button 
+                  type="button"
+                  onMouseEnter={hoverUi}
                   onClick={() => { onSave(); onClose(); }}
                   className="w-full bg-[#ffffff] text-[#002020] font-black py-4 px-6 uppercase tracking-widest hover:bg-[#35ebeb] transition-all flex justify-between items-center group"
                 >
@@ -148,6 +157,8 @@ export default function SettingsModal({
                 </button>
                 
                 <button 
+                  type="button"
+                  onMouseEnter={hoverUi}
                   onClick={() => { onReset(); onClose(); }}
                   className="w-full border-2 border-red-500 text-red-500 font-black py-4 px-6 uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex justify-between items-center group"
                 >

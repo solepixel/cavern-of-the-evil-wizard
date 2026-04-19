@@ -1,17 +1,14 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
+import { audioService } from '../lib/audioService';
 
-export type InfoModalKind = 'reboot' | 'log' | 'help';
+export type InfoModalKind = 'reboot' | 'help';
 
 const COPY: Record<InfoModalKind, { title: string; body: string }> = {
   reboot: {
     title: 'SYSTEM_REBOOT',
     body: 'Restarting the terminal session will return you to the title screen. Acknowledge to continue.',
-  },
-  log: {
-    title: 'DATA_LOG',
-    body: 'The data log will list story beats, discovered lore, and system diagnostics. Configuration is not hooked up yet—check back later.',
   },
   help: {
     title: 'HELP',
@@ -29,6 +26,7 @@ interface InfoModalProps {
 export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalProps) {
   if (!kind) return null;
   const content = COPY[kind];
+  const hoverUi = () => audioService.playHoverThrottled();
 
   const handleAcknowledge = () => {
     if (kind === 'reboot' && onRebootConfirm) {
@@ -59,13 +57,14 @@ export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalP
 
         <div className="mb-6 flex items-start justify-between gap-4">
           <h2 className="text-xl font-black uppercase tracking-widest text-[#ffaaf6]">{content.title}</h2>
-          <button type="button" onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
+          <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
             <X size={24} />
           </button>
         </div>
         <p className="text-sm leading-relaxed text-[#e2e2e2]/90">{content.body}</p>
         <button
           type="button"
+          onMouseEnter={hoverUi}
           onClick={handleAcknowledge}
           className="mt-8 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
         >
