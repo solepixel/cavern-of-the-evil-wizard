@@ -70,14 +70,15 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(examine|look) ?(at|in|inside)? wardrobe',
+        regex: 'look( at)?( the)? wardrobe',
         text: "It's a heavy oak wardrobe. It looks like it might contain something useful."
       },
       {
-        regex: '(open|search) wardrobe',
+        regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
         text: "You open the wardrobe. Inside, you find a red hoodie that looks like it might fit you, and an OLD BRASS KEY hanging on a hook.",
         getItem: 'old_key',
-        setState: 'open'
+        setState: 'open',
+        redundantMessage: 'The wardrobe is already open.',
       }
     ]
   },
@@ -87,17 +88,24 @@ export const OBJECTS: Record<string, GameObject> = {
     initialState: 'flat',
     descriptions: {
       'flat': "A faded blue rug with a space shuttle pattern. It's slightly bunched up near the corner.",
-      'bunched': "The rug is bunched up where you lifted it."
+      'flipped': "The rug is flipped over where you lifted it."
     },
     interactions: [
       {
-        regex: '(examine|look) ?(at)? rug',
+        regex: 'look( at)?( the)? rug',
         text: "A faded blue rug with a space shuttle pattern. It's slightly bunched up near the corner."
       },
       {
-        regex: '(look|search) under rug',
+        regex: '(look|search|flip|lift)( under)?( the)? rug',
         text: "You lift the corner of the rug. Just dust bunnies and a stray penny. Nothing useful.",
-        setState: 'bunched'
+        setState: 'flipped',
+        redundantMessage: "You've already checked under the rug. There's nothing new.",
+      },
+      {
+        regex: 'fix( the)? rug',
+        text: "You returned the rug to its original position. It's now flat.",
+        setState: 'flat',
+        redundantMessage: "The rug doesn't need to be fixed.",
       }
     ]
   },
@@ -106,11 +114,11 @@ export const OBJECTS: Record<string, GameObject> = {
     name: 'Window',
     initialState: 'default',
     descriptions: {
-      'default': "A window looking out onto the street."
+      'default': "A window looking outside the room."
     },
     interactions: [
       {
-        regex: '(examine|look) ?(at|out|out of)? window',
+        regex: 'look ?(at|out|out of)?( the)? window',
         text: "You look out the window. The street below looks familiar, but the perspective is all wrong. You're much higher up than you remember being."
       }
     ]
@@ -125,7 +133,7 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(open|unlock|examine) door',
+        regex: '(open|unlock)( the)? door',
         text: "The door is locked. You'll need a key to get out."
       },
       {
@@ -133,7 +141,31 @@ export const OBJECTS: Record<string, GameObject> = {
         text: "You unlock the door and step out into the hallway.",
         nextScene: 'hallway',
         removeItem: 'old_key',
-        setState: 'unlocked'
+        setState: 'unlocked',
+        redundantMessage: 'The door is already unlocked.',
+      }
+    ]
+  },
+  'bed': {
+    id: 'bed',
+    name: 'Bed',
+    initialState: 'unmade',
+    descriptions: {
+      'unmade': "A twin-sized bunk bed with a pillow and a blanket. It's unmade since you just woke up.",
+      'made': "The bed is now made. Your mom would be proud."
+    },
+    interactions: [
+      {
+        regex: '(make|tidy up) bed',
+        text: "You make the bed. It's now made. Well done!",
+        setState: 'made',
+        redundantMessage: 'The bed is already made.',
+        autoComplete: false,
+      },
+      {
+        regex: '(get( back)? in|go back|lie down on)( ?to)? bed',
+        text: "You try to curl up in the tiny bed, but you've outgrown this life. You need to move forward.",
+        setState: 'unmade'
       }
     ]
   },
@@ -147,14 +179,15 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(examine|look) ?(at)? gadget',
+        regex: 'look( at)?( the)? gadget',
         text: "It's a prototype for a digital comic book. It looks like something you'd design."
       },
       {
         regex: '(take|get|pick up) gadget',
         text: "You pick up the digital comic prototype.",
         getItem: 'comic_book',
-        setState: 'taken'
+        setState: 'taken',
+        redundantMessage: 'You already took the gadget.',
       }
     ]
   },
@@ -168,14 +201,15 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(examine|look) ?(at)? machine',
+        regex: 'look( at)?( the)? machine',
         text: "It's a Zoltar machine. The eyes seem to glow with an inner light. There's a slot for a coin."
       },
       {
         regex: '(use|insert|put) (magic_coin|coin) (on|in) machine',
         text: "You insert the coin. Zoltar's eyes light up. 'I WISH I WERE BIG,' you whisper. A card slides out: 'YOUR WISH IS GRANTED. BUT BEWARE THE COST.'",
         getItem: 'mystic_pendant',
-        setState: 'active'
+        setState: 'active',
+        redundantMessage: "Zoltar's eyes are already glowing—you've used the machine.",
       }
     ]
   }
@@ -185,17 +219,14 @@ export const SCENES: Record<string, Scene> = {
   'bedroom': {
     id: 'bedroom',
     title: "{{name}}'s Bedroom",
-    description: "You wake up in a room that feels impossibly small. Posters of 80s movies line the walls. You're lying in a twin-sized bed, but your legs are hanging off the end. You're wearing your favorite dinosaur pajamas, but they're stretched to their limit across your adult frame. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
+    description:
+      "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur pajamas, but they're stretched to their limit across your adult frame. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
     image: "/assets/images/bedroom.png",
     isCheckpoint: true,
-    objects: ['wardrobe', 'rug', 'window', 'door'],
+    objects: ['bed', 'wardrobe', 'rug', 'window', 'door'],
     interactionLabels: ['BED', 'WARDROBE', 'RUG', 'WINDOW', 'DOOR'],
     exits: {},
-    commands: {
-      '(get back in|go back to) bed': {
-        text: "You try to curl up in the tiny bed, but you've outgrown this life. You need to move forward."
-      }
-    }
+    commands: {}
   },
   'hallway': {
     id: 'hallway',
@@ -213,7 +244,7 @@ export const SCENES: Record<string, Scene> = {
       '(go|walk|head) south': {
         text: "The door to your parents' room is closed. You probably shouldn't wake them up in this state."
       },
-      '(examine|look) ?(at)? photos': {
+      'look( at)?( the)? photos': {
         text: "The photos show you and your parents at various ages. You look so small in them."
       }
     }
@@ -328,7 +359,7 @@ export const SCENES: Record<string, Scene> = {
       'back': 'midway'
     },
     commands: {
-      '(examine|look) ?(at)? mirror': {
+      'look( at)?( the)? mirror': {
         text: "The mirror shows a 13-year-old boy with a big heart. It's a reminder of who you are."
       },
       '(go|walk|head) back': {
@@ -366,13 +397,13 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      '(examine|look) ?(at)? wizard': {
+      'look( at)?( the)? wizard': {
         text: "The wizard looks terrifying, even in ice. His eyes seem to follow you."
       },
       '(use|turn on) flashlight': {
         text: "The beam of light reflects off the ice, creating a dazzling display of colors."
       },
-      '(examine|look) ?(at)? pod': {
+      'look( at)?( the)? pod': {
         text: "It's a high-tech thermal pod. It looks like it could melt the ice, but it needs to be aligned."
       },
       '(align|fix|set) pod': {
@@ -406,7 +437,7 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      '(examine|look) ?(at)? staff': {
+      'look( at)?( the)? staff': {
         text: "The staff pulses with magenta light. It's yours now.",
         getItem: 'wizard_staff'
       },
@@ -424,7 +455,7 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      '(examine|look) around': {
+      'look around': {
         text: "The cavern is beautiful now, filled with glowing crystals that feel friendly."
       },
       '(go|walk|head) back': {
@@ -471,7 +502,6 @@ export const SCENES: Record<string, Scene> = {
     exits: {},
     commands: {
       'explore the room': {
-        text: "You stand up, your head nearly brushing the ceiling. It's time to see what's happened.",
         nextScene: 'bedroom'
       }
     }

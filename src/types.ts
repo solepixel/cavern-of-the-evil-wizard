@@ -23,6 +23,10 @@ export interface Interaction {
   damage?: number;
   isDeath?: boolean;
   setState?: string; // Change the state of the object
+  /** Shown when setState matches the object’s current state (no-op). */
+  redundantMessage?: string;
+  /** When false, omit from command suggestions (easter egg). */
+  autoComplete?: boolean;
   callback?: (state: GameState) => GameState;
 }
 
@@ -49,7 +53,8 @@ export interface Scene {
 }
 
 export interface CommandResponse {
-  text: string;
+  /** Omitted or empty when only the next scene description should appear (e.g. after intro choice). */
+  text?: string;
   nextScene?: string;
   getItem?: ItemId;
   removeItem?: ItemId;
@@ -74,6 +79,8 @@ export interface GameState {
   uiVisible: boolean;
   hasMap: boolean;
   pendingItem: ItemId | null;
+  /** Last object the user examined/acted upon (used for viewport highlight). */
+  focusedObjectId?: ObjectId;
 }
 
 export const INITIAL_STATE: GameState = {
@@ -90,7 +97,8 @@ export const INITIAL_STATE: GameState = {
   namingPhase: false,
   uiVisible: false,
   hasMap: false,
-  pendingItem: null
+  pendingItem: null,
+  focusedObjectId: undefined
 };
 
 export interface CutsceneChoice {

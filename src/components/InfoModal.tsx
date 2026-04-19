@@ -7,7 +7,7 @@ export type InfoModalKind = 'reboot' | 'log' | 'help';
 const COPY: Record<InfoModalKind, { title: string; body: string }> = {
   reboot: {
     title: 'SYSTEM_REBOOT',
-    body: 'Restarting the terminal session will return you to the title screen. This control will be wired to a full reboot flow in a future update.',
+    body: 'Restarting the terminal session will return you to the title screen. Acknowledge to continue.',
   },
   log: {
     title: 'DATA_LOG',
@@ -22,11 +22,21 @@ const COPY: Record<InfoModalKind, { title: string; body: string }> = {
 interface InfoModalProps {
   kind: InfoModalKind | null;
   onClose: () => void;
+  /** Called when user confirms SYSTEM_REBOOT (before/after close — use to return to title). */
+  onRebootConfirm?: () => void;
 }
 
-export default function InfoModal({ kind, onClose }: InfoModalProps) {
+export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalProps) {
   if (!kind) return null;
   const content = COPY[kind];
+
+  const handleAcknowledge = () => {
+    if (kind === 'reboot' && onRebootConfirm) {
+      onRebootConfirm();
+    } else {
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -56,7 +66,7 @@ export default function InfoModal({ kind, onClose }: InfoModalProps) {
         <p className="text-sm leading-relaxed text-[#e2e2e2]/90">{content.body}</p>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleAcknowledge}
           className="mt-8 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
         >
           ACKNOWLEDGE

@@ -4,19 +4,22 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { Heart, Backpack, Map as MapIcon, Save, Settings as CogIcon, Play, AlertTriangle, Volume2, VolumeX, Volume1 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { GameState, Scene } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
-import { processCommand, loadGame, saveGame, SYS_PREFIX, sysLine } from './lib/gameEngine';
+import { processCommand, loadGame, loadSaveSlot, listSaveSlots, saveCheckpoint, saveGame, SYS_PREFIX, sysLine } from './lib/gameEngine';
 import NamingScreen from './components/NamingScreen';
 import Cutscene from './components/Cutscene';
 import Typewriter from './components/Typewriter';
 import InventoryAnimation from './components/InventoryAnimation';
 import SettingsModal from './components/SettingsModal';
 import InfoModal, { InfoModalKind } from './components/InfoModal';
-import { audioService } from './lib/audioService';
+import LoadGameModal from './components/LoadGameModal';
+import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/audioService';
+
+const initialAudioPrefs = loadAudioPreferences();
 
 function getSceneInteractionLabels(scene: Scene): string[] {
   if (scene.interactionLabels?.length) return scene.interactionLabels;
@@ -26,26 +29,148 @@ function getSceneInteractionLabels(scene: Scene): string[] {
   });
 }
 
+function getSceneObjectRows(scene: Scene, state: GameState) {
+  return (scene.objects ?? []).map((oid) => {
+    const obj = OBJECTS[oid];
+    const name = (obj?.name ?? oid).toUpperCase();
+    const st = state.objectStates[oid] ?? obj?.initialState ?? '';
+    const desc = (obj?.descriptions?.[st] ?? '').toString();
+
+    // Lightweight icon mapping (fallback: Package)
+    const iconById: Record<string, keyof typeof LucideIcons> = {
+      bed: 'BedDouble',
+      wardrobe: 'Archive',
+      rug: 'Square',
+      window: 'SquareDashed',
+      door: 'DoorOpen',
+      gadget: 'Cpu',
+      zoltar: 'Sparkles',
+    };
+    // @ts-expect-error dynamic icon
+    const Icon = (iconById[oid] ? LucideIcons[iconById[oid]] : LucideIcons.Package) as React.ComponentType<{ size?: number }>;
+
+    return { id: oid, name, desc, Icon };
+  });
+}
+
+function getFocusedGlowLabel(state: GameState): string | null {
+  if (!state.focusedObjectId) return null;
+  const obj = OBJECTS[state.focusedObjectId];
+  return (obj?.name ?? state.focusedObjectId).toUpperCase();
+}
+
+function getCommandSuggestions(params: {
+  input: string;
+  scene: Scene;
+  state: GameState;
+}): string[] {
+  const raw = params.input.trimStart();
+  const q = raw.toLowerCase();
+  if (!q) return [];
+
+  const scene = params.scene;
+  const objs = (scene.objects ?? []).map((oid) => {
+    const obj = OBJECTS[oid];
+    return { id: oid, name: (obj?.name ?? oid).toLowerCase() };
+  });
+
+  const suggestions = new Set<string>();
+
+  const allowSuggestion = (candidate: string): boolean => {
+    const c = candidate.toLowerCase();
+    for (const oid of scene.objects ?? []) {
+      const obj = OBJECTS[oid];
+      if (!obj) continue;
+      for (const it of obj.interactions ?? []) {
+        const auto = it.autoComplete !== false;
+        try {
+          const re = new RegExp(`^${it.regex}$`, 'i');
+          if (re.test(c)) {
+            return auto;
+          }
+        } catch {
+          // ignore invalid regex
+        }
+      }
+    }
+    return true;
+  };
+
+  // Common verbs
+  ['look', 'inventory', 'map', 'help'].forEach((c) => suggestions.add(c));
+
+  // Exits as simple "go <dir>"
+  Object.keys(scene.exits ?? {}).forEach((dir) => suggestions.add(`go ${dir}`));
+
+  // Object-based
+  objs.forEach((o) => {
+    suggestions.add(`examine ${o.name}`);
+    suggestions.add(`look at ${o.name}`);
+    // Small curated actions; avoids trying to parse arbitrary regexes.
+    if (o.id === 'wardrobe') suggestions.add('open wardrobe');
+    if (o.id === 'rug') suggestions.add('look under rug');
+    if (o.id === 'door') suggestions.add('open door');
+    if (o.id === 'bed') suggestions.add('make bed');
+    if (o.id === 'window') suggestions.add('look out window');
+    if (o.id === 'gadget') suggestions.add('take gadget');
+  });
+
+  // Inventory-aware
+  if (params.state.inventory.includes('old_key')) {
+    suggestions.add('use key on door');
+  }
+  if (params.state.inventory.includes('magic_coin')) {
+    suggestions.add('use coin in machine');
+  }
+
+  // Filter
+  const filtered = Array.from(suggestions).filter((s) => s.toLowerCase().startsWith(q) && allowSuggestion(s));
+  filtered.sort((a, b) => a.length - b.length);
+  return filtered.slice(0, 8);
+}
+
 export default function App() {
   const [state, setState] = useState<GameState>(INITIAL_STATE);
   const [inputValue, setInputValue] = useState('');
   const [skipTypewriter, setSkipTypewriter] = useState(false);
-  const [volume, setVolume] = useState(0.3);
-  const [isMuted, setIsMuted] = useState(false);
+  const [ambientVolume, setAmbientVolume] = useState(initialAudioPrefs.ambientVolume);
+  const [sfxVolume, setSfxVolume] = useState(initialAudioPrefs.sfxVolume);
+  const [isMuted, setIsMuted] = useState(initialAudioPrefs.muted);
+  const [isAmbientMuted, setIsAmbientMuted] = useState(initialAudioPrefs.ambientMuted);
+  const [isSfxMuted, setIsSfxMuted] = useState(initialAudioPrefs.sfxMuted);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [infoModalKind, setInfoModalKind] = useState<InfoModalKind | null>(null);
   const [sceneInteractionsVisible, setSceneInteractionsVisible] = useState(true);
+  const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+  const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   const scrollTerminalToEnd = useCallback(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  /** Ambient BGM: title screen, naming, and gameplay (not when muted). */
   useEffect(() => {
-    if (state.gameStarted && !isMuted) {
-      audioService.playAmbient();
-    }
-  }, [state.gameStarted, isMuted]);
+    audioService.applyPreferences({
+      ambientVolume,
+      sfxVolume,
+      muted: isMuted,
+      ambientMuted: isAmbientMuted,
+      sfxMuted: isSfxMuted,
+    });
+    if (isMuted) return;
+    audioService.playAmbient();
+  }, [state.gameStarted, state.namingPhase, isMuted, ambientVolume, sfxVolume, isAmbientMuted, isSfxMuted]);
+
+  /** Retry playback after browser autoplay block — first interaction on title screen. */
+  useEffect(() => {
+    if (state.gameStarted || state.namingPhase) return;
+    const unlock = () => {
+      if (!isMuted) audioService.playAmbient();
+    };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, [state.gameStarted, state.namingPhase, isMuted]);
 
   useEffect(() => {
     if (state.pendingItem) {
@@ -61,6 +186,20 @@ export default function App() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.history]);
 
+  useEffect(() => {
+    const modalOpen = isSettingsOpen || infoModalKind !== null;
+    if (!modalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsSettingsOpen(false);
+        setInfoModalKind(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isSettingsOpen, infoModalKind]);
+
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
       if (lineIndex === state.history.length - 1) {
@@ -72,9 +211,10 @@ export default function App() {
 
   const handleSaveProgress = useCallback(() => {
     setState((prev) => {
-      saveGame(prev);
+      saveCheckpoint(prev);
       return { ...prev, history: [...prev.history, sysLine('System state saved to floppy disk.')] };
     });
+    setSaveSlots(listSaveSlots());
   }, []);
 
   const handleCommand = (e?: React.FormEvent, manualCommand?: string) => {
@@ -94,13 +234,30 @@ export default function App() {
     setInputValue('');
     setSkipTypewriter(false);
 
-    setVolume(audioService.getVolume());
+    setAmbientVolume(audioService.getAmbientVolume());
+    setSfxVolume(audioService.getSfxVolume());
+    setIsAmbientMuted(audioService.getAmbientMuted());
+    setIsSfxMuted(audioService.getSfxMuted());
   };
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        if (state.isGameOver) return;
+        const currentScene = SCENES[state.currentSceneId];
+        const suggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+        const first = suggestions[0];
+        if (first) {
+          e.preventDefault();
+          setInputValue(first);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inputValue, state]);
+
   const startGame = () => {
-    if (!isMuted) {
-      audioService.playAmbient();
-    }
     setState((prev) => ({ ...prev, namingPhase: true }));
   };
 
@@ -118,11 +275,31 @@ export default function App() {
   const toggleMute = () => {
     const muted = audioService.toggleMute();
     setIsMuted(muted);
+    saveAudioPreferences({ ambientVolume, sfxVolume, muted, ambientMuted: isAmbientMuted, sfxMuted: isSfxMuted });
   };
 
-  const handleVolumeChange = (newVol: number) => {
-    setVolume(newVol);
-    audioService.setVolume(newVol);
+  const handleAmbientVolumeChange = (newVol: number) => {
+    setAmbientVolume(newVol);
+    audioService.setAmbientVolume(newVol);
+    saveAudioPreferences({ ambientVolume: newVol, sfxVolume, muted: isMuted, ambientMuted: isAmbientMuted, sfxMuted: isSfxMuted });
+  };
+
+  const handleSfxVolumeChange = (newVol: number) => {
+    setSfxVolume(newVol);
+    audioService.setSfxVolume(newVol);
+    saveAudioPreferences({ ambientVolume, sfxVolume: newVol, muted: isMuted, ambientMuted: isAmbientMuted, sfxMuted: isSfxMuted });
+  };
+
+  const toggleAmbientMute = () => {
+    const m = audioService.toggleAmbientMute();
+    setIsAmbientMuted(m);
+    saveAudioPreferences({ ambientVolume, sfxVolume, muted: isMuted, ambientMuted: m, sfxMuted: isSfxMuted });
+  };
+
+  const toggleSfxMute = () => {
+    const m = audioService.toggleSfxMute();
+    setIsSfxMuted(m);
+    saveAudioPreferences({ ambientVolume, sfxVolume, muted: isMuted, ambientMuted: isAmbientMuted, sfxMuted: m });
   };
 
   const resetGame = () => {
@@ -133,7 +310,38 @@ export default function App() {
     }
   };
 
-  const infoModal = <InfoModal kind={infoModalKind} onClose={() => setInfoModalKind(null)} />;
+  const handleRebootConfirm = useCallback(() => {
+    setInfoModalKind(null);
+    setInputValue('');
+    setSkipTypewriter(false);
+    setState(INITIAL_STATE);
+    audioService.stopAmbient();
+  }, []);
+
+  const infoModal = (
+    <InfoModal
+      kind={infoModalKind}
+      onClose={() => setInfoModalKind(null)}
+      onRebootConfirm={handleRebootConfirm}
+    />
+  );
+
+  const loadModal = (
+    <LoadGameModal
+      isOpen={isLoadModalOpen}
+      slots={saveSlots}
+      onClose={() => setIsLoadModalOpen(false)}
+      onLoad={(slotId) => {
+        const loaded = loadSaveSlot(slotId);
+        if (loaded) {
+          setIsLoadModalOpen(false);
+          setState(loaded);
+        } else {
+          alert('Failed to load that save slot.');
+        }
+      }}
+    />
+  );
 
   if (!state.gameStarted && !state.namingPhase) {
     return (
@@ -177,13 +385,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    const saved = loadGame();
-                    if (saved) {
-                      if (!isMuted) audioService.playAmbient();
-                      setState(saved);
-                    } else {
-                      alert('No saved game found.');
-                    }
+                    const slots = listSaveSlots();
+                    setSaveSlots(slots);
+                    setIsLoadModalOpen(true);
                   }}
                   className="group flex w-full items-center justify-between border-2 border-[#ffaaf6] px-6 py-4 font-bold uppercase tracking-widest text-[#ffaaf6] transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
                 >
@@ -194,22 +398,32 @@ export default function App() {
             </div>
           </motion.div>
 
-          <footer className="fixed bottom-0 flex w-full items-center justify-between border-t-4 border-[#ffffff] bg-[#131313] p-4 text-[10px] uppercase tracking-widest text-[#ffaaf6]">
+          <footer className="fixed bottom-0 z-30 flex w-full flex-wrap items-center justify-between gap-y-2 border-t-4 border-[#ffffff] bg-[#131313] p-4 text-[10px] uppercase tracking-widest text-[#ffaaf6]">
             <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-            <div className="flex gap-8">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 md:gap-8">
+              <div className="group flex items-center gap-2">
+                <button type="button" onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+                  {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={ambientVolume}
+                  onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
+                  className="h-1 w-20 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] md:w-24 group-hover:bg-[#35ebeb]/30"
+                  aria-label="Volume"
+                />
+              </div>
               <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
                 SYSTEM_REBOOT
-              </button>
-              <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
-                DATA_LOG
-              </button>
-              <button type="button" className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
-                HELP
               </button>
             </div>
           </footer>
         </div>
         {infoModal}
+        {loadModal}
       </>
     );
   }
@@ -219,6 +433,7 @@ export default function App() {
       <>
         <NamingScreen onComplete={completeNaming} />
         {infoModal}
+        {loadModal}
       </>
     );
   }
@@ -226,36 +441,29 @@ export default function App() {
   const currentScene = SCENES[state.currentSceneId];
   const isCutscene = state.currentSceneId.startsWith('cutscene_');
   const interactionLabels = getSceneInteractionLabels(currentScene);
+  const sceneObjectRows = getSceneObjectRows(currentScene, state);
+  const commandSuggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+  const focusedGlowLabel = getFocusedGlowLabel(state);
 
   return (
     <>
       <div className="flex h-screen flex-col overflow-hidden bg-[#131313] font-sans text-[#e2e2e2]">
         <div className="pointer-events-none fixed inset-0 opacity-20 crt-scanlines" />
 
-        <AnimatePresence>
-          {isCutscene && <Cutscene scene={currentScene} onChoice={(choice) => handleCommand(undefined, choice)} />}
-        </AnimatePresence>
+        <LayoutGroup id="scene-viewport">
+          <AnimatePresence>
+            {isCutscene && <Cutscene scene={currentScene} onChoice={(choice) => handleCommand(undefined, choice)} />}
+          </AnimatePresence>
 
-        <AnimatePresence>
-          {state.pendingItem && (
-            <InventoryAnimation
-              itemName={ITEMS[state.pendingItem].name}
-              iconName={ITEMS[state.pendingItem].icon}
-              onComplete={() => setState((prev) => ({ ...prev, pendingItem: null }))}
-            />
-          )}
-        </AnimatePresence>
-
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          onSave={handleSaveProgress}
-          onReset={resetGame}
-          volume={volume}
-          onVolumeChange={handleVolumeChange}
-          isMuted={isMuted}
-          onToggleMute={toggleMute}
-        />
+          <AnimatePresence>
+            {state.pendingItem && (
+              <InventoryAnimation
+                itemName={ITEMS[state.pendingItem].name}
+                iconName={ITEMS[state.pendingItem].icon}
+                onComplete={() => setState((prev) => ({ ...prev, pendingItem: null }))}
+              />
+            )}
+          </AnimatePresence>
 
         <div className="flex flex-1 overflow-hidden">
           <AnimatePresence>
@@ -338,12 +546,18 @@ export default function App() {
                   className="absolute inset-0"
                 >
                   {currentScene.image ? (
-                    <img
-                      src={currentScene.image}
-                      alt={currentScene.title}
-                      className="h-full w-full object-cover opacity-80"
-                      referrerPolicy="no-referrer"
-                    />
+                    <motion.div
+                      layoutId={state.currentSceneId === 'bedroom' ? 'viewport-scene-panel' : undefined}
+                      className="absolute inset-0 h-full w-full"
+                      transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.85 }}
+                    >
+                      <img
+                        src={currentScene.image}
+                        alt={currentScene.title}
+                        className="h-full w-full object-cover opacity-80"
+                        referrerPolicy="no-referrer"
+                      />
+                    </motion.div>
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center opacity-40">
                       <div className="text-center font-mono text-[#35ebeb]">
@@ -359,6 +573,15 @@ export default function App() {
 
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent opacity-20" />
               <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]" />
+
+              {focusedGlowLabel && (
+                <>
+                  <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_0_3px_rgba(53,235,235,0.25),inset_0_0_45px_rgba(53,235,235,0.18)]" />
+                  <div className="pointer-events-none absolute left-4 top-4 border-l-4 border-[#ffaaf6] bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#ffaaf6]">
+                    FOCUS: {focusedGlowLabel}
+                  </div>
+                </>
+              )}
 
               <div className="absolute right-4 top-4 border-l-4 border-[#35ebeb] bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase text-[#35ebeb]">
                 AREA: 0x{state.currentSceneId.toUpperCase()}
@@ -426,6 +649,24 @@ export default function App() {
                     placeholder={inputValue ? '' : 'ENTER COMMAND...'}
                     disabled={state.isGameOver}
                   />
+
+                  {commandSuggestions.length > 0 && !state.isGameOver && (
+                    <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden border-2 border-[#35ebeb]/50 bg-[#131313] shadow-[0_0_30px_rgba(53,235,235,0.15)]">
+                      {commandSuggestions.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setInputValue(s);
+                          }}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-[#35ebeb]/90 hover:bg-[#353535] hover:text-[#35ebeb]"
+                        >
+                          <span className="truncate">{s}</span>
+                          <span className="ml-3 text-[#e2e2e2]/40">TAB</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {!state.uiVisible && (
                   <div className="hidden animate-pulse text-[10px] uppercase tracking-widest text-[#35ebeb]/50 md:block">
@@ -445,24 +686,6 @@ export default function App() {
                 transition={{ type: 'spring', damping: 20, stiffness: 100 }}
                 className="z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0"
               >
-                {sceneInteractionsVisible && (
-                  <div className="flex-shrink-0 border-b border-[#353535] p-6">
-                    <h3 className="mb-4 flex items-center gap-2 font-black uppercase tracking-widest text-[#35ebeb]">
-                      SCENE
-                    </h3>
-                    <ul className="flex flex-wrap gap-2">
-                      {interactionLabels.map((label) => (
-                        <li
-                          key={label}
-                          className="border border-[#35ebeb]/40 bg-[#131313] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#e2e2e2]"
-                        >
-                          {label}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
                   <h3 className="mb-4 flex flex-shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
                     <Backpack size={18} /> INVENTORY
@@ -495,6 +718,30 @@ export default function App() {
                   </div>
                 </div>
 
+                {sceneInteractionsVisible && (
+                  <div className="border-t border-[#353535] p-6">
+                    <h3 className="mb-4 flex items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70">
+                      SCENE OBJECTS
+                    </h3>
+                    <div className="grid grid-cols-1 gap-2">
+                      {sceneObjectRows.map(({ id, name, desc, Icon }) => (
+                        <div
+                          key={id}
+                          className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
+                        >
+                          <div className="mt-1 text-[#e2e2e2]/60">
+                            <Icon size={16} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
+                            <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-auto flex-shrink-0 border-t border-[#353535] p-6 pt-4">
                   <div className="border-b-4 border-[#ffaaf6] bg-[#131313] p-4">
                     <div className="mb-1 text-[10px] uppercase tracking-widest text-[#ffaaf6]">System Status</div>
@@ -506,21 +753,39 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+        </LayoutGroup>
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSave={handleSaveProgress}
+          onReset={resetGame}
+          ambientVolume={ambientVolume}
+          onAmbientVolumeChange={handleAmbientVolumeChange}
+          sfxVolume={sfxVolume}
+          onSfxVolumeChange={handleSfxVolumeChange}
+          isMuted={isMuted}
+          onToggleMute={toggleMute}
+          isAmbientMuted={isAmbientMuted}
+          onToggleAmbientMute={toggleAmbientMute}
+          isSfxMuted={isSfxMuted}
+          onToggleSfxMute={toggleSfxMute}
+        />
 
         <footer className="z-50 flex items-center justify-between border-t-4 border-[#ffffff] bg-[#131313] px-8 py-2 text-[10px] uppercase tracking-widest text-[#ffaaf6]">
           <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
           <div className="flex items-center gap-8">
             <div className="group flex items-center gap-2">
               <button type="button" onClick={toggleMute} className="hover:text-[#35ebeb]">
-                {isMuted ? <VolumeX size={14} /> : volume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+                {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
               </button>
               <input
                 type="range"
                 min="0"
                 max="1"
                 step="0.01"
-                value={volume}
-                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                value={ambientVolume}
+                onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
                 className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30"
               />
             </div>
@@ -537,6 +802,7 @@ export default function App() {
         </footer>
       </div>
       {infoModal}
+      {loadModal}
     </>
   );
 }

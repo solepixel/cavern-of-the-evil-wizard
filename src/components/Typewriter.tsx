@@ -10,6 +10,34 @@ interface TypewriterProps {
   onContentChange?: () => void;
 }
 
+/** Wrap ALL-CAPS words (2+ letters) in styled spans — interaction hints. Skips fragments already rendered as nodes. */
+function highlightAllCapsWords(parts: (string | React.ReactNode)[]): (string | React.ReactNode)[] {
+  const out: (string | React.ReactNode)[] = [];
+  let key = 0;
+
+  parts.forEach((part) => {
+    if (typeof part !== 'string') {
+      out.push(part);
+      return;
+    }
+    const segments = part.split(/(\b[A-Z]{2,}\b)/g);
+    segments.forEach((seg, si) => {
+      if (!seg) return;
+      if (/^[A-Z]{2,}$/.test(seg)) {
+        out.push(
+          <span key={`caps-${key++}-${si}-${seg}`} className="font-bold text-[#35ebeb]">
+            {seg}
+          </span>,
+        );
+      } else {
+        out.push(seg);
+      }
+    });
+  });
+
+  return out;
+}
+
 export default function Typewriter({ text, speed = 20, onComplete, skip = false, onContentChange }: TypewriterProps) {
   const segments = useMemo(() => text.split(/\n\n+/).filter((s) => s.length > 0), [text]);
   const [segmentIdx, setSegmentIdx] = useState(0);
@@ -93,20 +121,24 @@ export default function Typewriter({ text, speed = 20, onComplete, skip = false,
 
   const renderHighlightedText = (content: string) => {
     let result: (string | React.ReactNode)[] = [content];
-    
+
     const sortedItems = Object.values(ITEMS).sort((a, b) => b.name.length - a.name.length);
 
-    sortedItems.forEach(item => {
+    sortedItems.forEach((item) => {
       const itemName = item.name.toUpperCase();
       const newResult: (string | React.ReactNode)[] = [];
-      
-      result.forEach(part => {
+
+      result.forEach((part) => {
         if (typeof part === 'string') {
           const regex = new RegExp(`(${itemName})`, 'gi');
           const fragments = part.split(regex);
           fragments.forEach((fragment, i) => {
             if (fragment.toUpperCase() === itemName) {
-              newResult.push(<span key={`${item.id}-${i}`} className="text-[#ffaaf6] font-black">{fragment}</span>);
+              newResult.push(
+                <span key={`${item.id}-${i}`} className="font-black text-[#ffaaf6]">
+                  {fragment}
+                </span>,
+              );
             } else if (fragment) {
               newResult.push(fragment);
             }
@@ -118,7 +150,7 @@ export default function Typewriter({ text, speed = 20, onComplete, skip = false,
       result = newResult;
     });
 
-    return result;
+    return highlightAllCapsWords(result);
   };
 
   const showCaret = !skip && !done;

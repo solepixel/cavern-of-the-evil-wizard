@@ -1,17 +1,22 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Volume2, VolumeX, Volume1, Save, LogOut } from 'lucide-react';
-import { audioService } from '../lib/audioService';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
   onReset: () => void;
-  volume: number;
-  onVolumeChange: (val: number) => void;
+  ambientVolume: number;
+  onAmbientVolumeChange: (val: number) => void;
+  sfxVolume: number;
+  onSfxVolumeChange: (val: number) => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  isAmbientMuted: boolean;
+  onToggleAmbientMute: () => void;
+  isSfxMuted: boolean;
+  onToggleSfxMute: () => void;
 }
 
 export default function SettingsModal({ 
@@ -19,10 +24,16 @@ export default function SettingsModal({
   onClose, 
   onSave, 
   onReset, 
-  volume, 
-  onVolumeChange, 
+  ambientVolume, 
+  onAmbientVolumeChange, 
+  sfxVolume,
+  onSfxVolumeChange,
   isMuted, 
-  onToggleMute 
+  onToggleMute,
+  isAmbientMuted,
+  onToggleAmbientMute,
+  isSfxMuted,
+  onToggleSfxMute
 }: SettingsModalProps) {
   return (
     <AnimatePresence>
@@ -55,14 +66,14 @@ export default function SettingsModal({
             </div>
 
             <div className="space-y-8">
-              {/* Volume Control */}
+              {/* Audio Controls */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[#35ebeb] font-bold uppercase tracking-widest text-sm">
-                    {isMuted ? <VolumeX size={18} /> : volume > 0.5 ? <Volume2 size={18} /> : <Volume1 size={18} />}
-                    AUDIO VOLUME
+                    {isMuted ? <VolumeX size={18} /> : ambientVolume > 0.5 ? <Volume2 size={18} /> : <Volume1 size={18} />}
+                    AUDIO
                   </div>
-                  <span className="text-[#35ebeb] font-mono">{Math.round(volume * 100)}%</span>
+                  <span className="text-[#35ebeb] font-mono">{Math.round(ambientVolume * 100)}%</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <button 
@@ -71,15 +82,58 @@ export default function SettingsModal({
                   >
                     {isMuted ? 'UNMUTE' : 'MUTE'}
                   </button>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="1" 
-                    step="0.01" 
-                    value={volume} 
-                    onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                    className="flex-1 h-2 bg-[#131313] appearance-none cursor-pointer accent-[#35ebeb] border border-[#35ebeb]/30"
-                  />
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/80">BGM</div>
+                      <button
+                        type="button"
+                        onClick={onToggleAmbientMute}
+                        className={`px-2 py-1 border text-[10px] font-black uppercase tracking-widest transition-all ${
+                          isAmbientMuted
+                            ? 'bg-[#ffaaf6] border-[#ffaaf6] text-[#131313]'
+                            : 'border-[#35ebeb]/60 text-[#35ebeb]/90 hover:bg-[#35ebeb] hover:text-[#131313]'
+                        }`}
+                      >
+                        {isAmbientMuted ? 'UNMUTE' : 'MUTE'}
+                      </button>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="1" 
+                        step="0.01" 
+                        value={ambientVolume} 
+                        onChange={(e) => onAmbientVolumeChange(parseFloat(e.target.value))}
+                        className="flex-1 h-2 bg-[#131313] appearance-none cursor-pointer accent-[#35ebeb] border border-[#35ebeb]/30"
+                        disabled={isAmbientMuted}
+                      />
+                      <div className="w-12 text-right text-[10px] text-[#35ebeb]/80">{Math.round(ambientVolume * 100)}%</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/80">SFX</div>
+                      <button
+                        type="button"
+                        onClick={onToggleSfxMute}
+                        className={`px-2 py-1 border text-[10px] font-black uppercase tracking-widest transition-all ${
+                          isSfxMuted
+                            ? 'bg-[#ffaaf6] border-[#ffaaf6] text-[#131313]'
+                            : 'border-[#35ebeb]/60 text-[#35ebeb]/90 hover:bg-[#35ebeb] hover:text-[#131313]'
+                        }`}
+                      >
+                        {isSfxMuted ? 'UNMUTE' : 'MUTE'}
+                      </button>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="1" 
+                        step="0.01" 
+                        value={sfxVolume} 
+                        onChange={(e) => onSfxVolumeChange(parseFloat(e.target.value))}
+                        className="flex-1 h-2 bg-[#131313] appearance-none cursor-pointer accent-[#35ebeb] border border-[#35ebeb]/30"
+                        disabled={isSfxMuted}
+                      />
+                      <div className="w-12 text-right text-[10px] text-[#35ebeb]/80">{Math.round(sfxVolume * 100)}%</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
