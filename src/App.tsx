@@ -544,6 +544,16 @@ export default function App() {
         <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#131313] p-4">
           <div className="pointer-events-none fixed inset-0 opacity-30 crt-scanlines" />
 
+          <button
+            type="button"
+            onMouseEnter={hoverUi}
+            onClick={() => setIsSettingsOpen(true)}
+            className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-40 flex h-11 w-11 items-center justify-center rounded-md border-2 border-[#35ebeb] bg-[#131313]/80 text-[#35ebeb] backdrop-blur hover:bg-[#35ebeb]/10 active:scale-[0.98]"
+            aria-label="Open settings"
+          >
+            <CogIcon size={18} />
+          </button>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -620,15 +630,6 @@ export default function App() {
                   SYSTEM_REBOOT
                 </button>
               </div>
-              <button
-                type="button"
-                onMouseEnter={hoverUi}
-                onClick={() => setIsSettingsOpen(true)}
-                className="flex items-center justify-center gap-2 border-2 border-[#35ebeb] py-2.5 font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb]/10 md:hidden"
-              >
-                <CogIcon size={18} aria-hidden />
-                Settings &amp; audio
-              </button>
             </div>
           </footer>
         </div>
