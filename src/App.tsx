@@ -548,7 +548,7 @@ export default function App() {
             type="button"
             onMouseEnter={hoverUi}
             onClick={() => setIsSettingsOpen(true)}
-            className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-40 flex h-11 w-11 items-center justify-center rounded-md border-2 border-[#35ebeb] bg-[#131313]/80 text-[#35ebeb] backdrop-blur hover:bg-[#35ebeb]/10 active:scale-[0.98]"
+            className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-40 flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[#35ebeb] hover:bg-[#35ebeb]/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#35ebeb] focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313]"
             aria-label="Open settings"
           >
             <CogIcon size={18} />
@@ -648,7 +648,7 @@ export default function App() {
           type="button"
           onMouseEnter={hoverUi}
           onClick={() => setIsSettingsOpen(true)}
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px)+0.5rem)] right-3 z-[70] flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#35ebeb] bg-[#1b1b1b] text-[#35ebeb] shadow-lg md:hidden"
+          className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-[70] flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[#35ebeb] hover:bg-[#35ebeb]/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#35ebeb] focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313] md:hidden"
           aria-label="Settings and audio"
         >
           <CogIcon size={22} />

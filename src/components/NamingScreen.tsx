@@ -74,7 +74,7 @@ export default function NamingScreen({ onComplete, onCancel }: NamingScreenProps
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex min-h-[100dvh] flex-col items-center justify-start overflow-y-auto overscroll-y-contain bg-[#131313] p-3 py-6 sm:justify-center sm:p-4 sm:py-8">
+    <div className="fixed inset-0 z-50 flex min-h-[100dvh] flex-col items-center overflow-y-auto overscroll-y-contain bg-[#131313] p-3 py-6 justify-center sm:p-4 sm:py-8 max-md:pt-15!">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
