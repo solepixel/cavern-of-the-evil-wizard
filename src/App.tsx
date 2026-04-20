@@ -1256,7 +1256,10 @@ export default function App() {
                       type="button"
                       onMouseEnter={hoverUi}
                       onClick={() => setInventoryPanelExpanded((v) => !v)}
-                      className="mb-3 flex w-full items-center justify-between gap-3 md:mb-4"
+                      className={clsx(
+                        'flex w-full items-center justify-between gap-3',
+                        inventoryPanelExpanded ? 'mb-3 md:mb-4' : 'mb-0',
+                      )}
                       aria-expanded={inventoryPanelExpanded}
                     >
                       <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
@@ -1307,7 +1310,10 @@ export default function App() {
                         type="button"
                         onMouseEnter={hoverUi}
                         onClick={() => setSceneObjectsPanelExpanded((v) => !v)}
-                        className="mb-3 flex w-full items-center justify-between gap-3 md:mb-4"
+                        className={clsx(
+                          'flex w-full items-center justify-between gap-3',
+                          sceneObjectsPanelExpanded ? 'mb-3 md:mb-4' : 'mb-0',
+                        )}
                         aria-expanded={sceneObjectsPanelExpanded}
                       >
                         <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70">
