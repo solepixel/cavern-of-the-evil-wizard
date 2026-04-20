@@ -16,6 +16,11 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  # GitHub is moving JavaScript actions from Node 20 → Node 24 in 2026.
+  # Opt in now to avoid the deprecation warning.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: read
 
@@ -29,6 +34,19 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+
+      - name: Verify Netlify secrets are set
+        run: |
+          if [ -z "${NETLIFY_AUTH_TOKEN}" ] || [ -z "${NETLIFY_SITE_ID}" ]; then
+            echo "Missing Netlify secrets."
+            echo "Add these in GitHub: Settings → Secrets and variables → Actions"
+            echo "  - NETLIFY_AUTH_TOKEN"
+            echo "  - NETLIFY_SITE_ID"
+            exit 1
+          fi
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
 
       - run: npm ci
 
