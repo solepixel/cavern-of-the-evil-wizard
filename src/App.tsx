@@ -38,6 +38,7 @@ import {
   FATAL_PREFIX,
   SYS_PREFIX,
   sysLine,
+  applyDeadlineExpired,
 } from './lib/gameEngine';
 import NamingScreen from './components/NamingScreen';
 import Cutscene from './components/Cutscene';
@@ -91,6 +92,12 @@ function getSceneObjectRows(scene: Scene, state: GameState) {
       door: 'DoorOpen',
       gadget: 'Cpu',
       zoltar: 'Sparkles',
+      bathroom_door: 'Bath',
+      parents_closet: 'Shirt',
+      rattle_table: 'Table',
+      playpen: 'Baby',
+      parents_exit_door: 'DoorClosed',
+      evil_wizard: 'Skull',
     };
     const iconKey = iconById[oid];
     const Icon = ((iconKey ? (LucideIcons as any)[iconKey] : LucideIcons.Package) ?? LucideIcons.Package) as React.ComponentType<{
@@ -105,6 +112,13 @@ function getFocusedGlowLabel(state: GameState): string | null {
   if (!state.focusedObjectId) return null;
   const obj = OBJECTS[state.focusedObjectId];
   return (obj?.name ?? state.focusedObjectId).toUpperCase();
+}
+
+/** Matches `processCommand`: prompt is inactive once wall-clock expiry has passed. */
+function isActivePendingPrompt(pending: GameState['pendingPrompt']): boolean {
+  if (!pending) return false;
+  if (pending.expiresAtMs !== undefined && Date.now() > pending.expiresAtMs) return false;
+  return true;
 }
 
 function getCommandSuggestions(params: {
@@ -167,20 +181,32 @@ function getCommandSuggestions(params: {
   if (params.state.inventory.includes('old_key')) {
     suggestions.add('use key on door');
   }
-  if (params.state.inventory.includes('magic_coin')) {
-    suggestions.add('use coin in machine');
+  if (params.state.inventory.includes('quarter') && params.scene.id === 'zoltar_fairgrounds') {
+    suggestions.add('use quarter on zoltar');
   }
 
   if (params.scene.id === 'bedroom') {
     suggestions.add('explore the room');
+    suggestions.add('open door');
+    suggestions.add('go hall');
+    suggestions.add('walk through door');
+    suggestions.add('leave room');
   }
 
-  if (params.state.inventory.includes('warm_clothes') && !params.state.equippedItemIds?.includes('warm_clothes')) {
-    suggestions.add('equip hoodie');
-    suggestions.add('equip warm clothes');
+  const outfit = ['giants_hoodie', 'sweatpants_gray', 'sneakers_white'] as const;
+  for (const oid of outfit) {
+    if (params.state.inventory.includes(oid) && !params.state.equippedItemIds?.includes(oid)) {
+      suggestions.add(`equip ${ITEMS[oid].name.toLowerCase()}`);
+    }
   }
-  if (params.state.equippedItemIds?.includes('warm_clothes')) {
-    suggestions.add('unequip hoodie');
+  if (params.scene.id === 'hallway') {
+    suggestions.add('go north');
+    suggestions.add('go south');
+    suggestions.add('go east');
+    suggestions.add('go west');
+  }
+  if (params.state.inventory.includes('glacial_armor') && !params.state.equippedItemIds?.includes('glacial_armor')) {
+    suggestions.add('equip glacial armor');
   }
 
   // Filter
@@ -269,6 +295,30 @@ export default function App() {
   useEffect(() => {
     loadGame();
   }, []);
+
+  /** Wall-clock deadline: expire without requiring another command. */
+  useEffect(() => {
+    if (!state.deadlineAtMs || state.isGameOver) return;
+    const ms = Math.max(0, state.deadlineAtMs - Date.now());
+    const t = window.setTimeout(() => {
+      setState((prev) => {
+        if (prev.isGameOver) return prev;
+        if (!prev.deadlineAtMs || !prev.deadlineSceneId) return prev;
+        if (prev.currentSceneId !== prev.deadlineSceneId) return prev;
+        if (Date.now() < prev.deadlineAtMs) return prev;
+        return applyDeadlineExpired(prev);
+      });
+    }, ms + 25);
+    return () => window.clearTimeout(t);
+  }, [state.deadlineAtMs, state.deadlineSceneId, state.currentSceneId, state.isGameOver]);
+
+  /** Re-render countdown while a deadline is active. */
+  const [, setDeadlineTick] = useState(0);
+  useEffect(() => {
+    if (!state.deadlineAtMs || state.isGameOver || state.currentSceneId !== state.deadlineSceneId) return;
+    const id = window.setInterval(() => setDeadlineTick((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [state.deadlineAtMs, state.deadlineSceneId, state.currentSceneId, state.isGameOver]);
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -664,9 +714,14 @@ export default function App() {
   }
 
   const currentScene = SCENES[state.currentSceneId];
+  const deadlineSecondsLeft =
+    state.deadlineAtMs && !state.isGameOver && state.currentSceneId === state.deadlineSceneId
+      ? Math.max(0, Math.ceil((state.deadlineAtMs - Date.now()) / 1000))
+      : null;
   const interactionLabels = getSceneInteractionLabels(currentScene);
   const sceneObjectRows = getSceneObjectRows(currentScene, state);
   const commandSuggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+  const awaitingPromptResponse = isActivePendingPrompt(state.pendingPrompt);
   const focusedGlowLabel = getFocusedGlowLabel(state);
   const suggestionActiveIndex =
     suggestionHighlight >= 0 && suggestionHighlight < commandSuggestions.length ? suggestionHighlight : -1;
@@ -820,7 +875,14 @@ export default function App() {
 
         <LayoutGroup id="scene-viewport">
           <AnimatePresence>
-            {isCutscene && <Cutscene scene={currentScene} onChoice={(choice) => handleCommand(undefined, choice)} />}
+            {isCutscene && (
+              <Cutscene
+                key={state.currentSceneId}
+                scene={currentScene}
+                gameChromeVisible={state.uiVisible}
+                onChoice={(choice) => handleCommand(undefined, choice)}
+              />
+            )}
           </AnimatePresence>
 
           <AnimatePresence>
@@ -883,7 +945,10 @@ export default function App() {
                     <div>
                       <div className="text-lg font-bold uppercase tracking-tighter text-[#ffaaf6]">{state.playerName}</div>
                       <div className="text-[10px] font-black text-[#35ebeb]">
-                        HP: {state.hp}/{state.maxHp}
+                        HP: {state.hp}/{state.maxHp} · SCORE: {state.score ?? 0}
+                        {deadlineSecondsLeft != null ? (
+                          <span className="ml-2 text-[#ffaaf6]">· TIME: {deadlineSecondsLeft}s</span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -981,7 +1046,7 @@ export default function App() {
                     return viewportSrc ? (
                       <motion.div
                         layoutId={!isCutscene && handoffId ? handoffId : undefined}
-                        className="absolute inset-0 h-full w-full"
+                        className="absolute inset-0 h-full w-full overflow-hidden border-0"
                         transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.85 }}
                       >
                         <img
@@ -1060,6 +1125,12 @@ export default function App() {
               )}
               onClick={() => setSkipTypewriter(true)}
             >
+              <div
+                className={clsx(
+                  'flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding,margin] duration-200',
+                  awaitingPromptResponse && 'ml-2 border-l-2 border-[#35ebeb]/35 pl-4 md:ml-3 md:pl-5',
+                )}
+              >
               <div className="terminal-scroll mb-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2 font-mono md:mb-4 md:pr-4">
                 {state.history.map((line, i) => {
                   const isLast = i === state.history.length - 1;
@@ -1107,7 +1178,10 @@ export default function App() {
 
               <form
                 onSubmit={handleCommand}
-                className="relative flex shrink-0 items-center gap-3 border-l-4 border-[#35ebeb] bg-[#1b1b1b] p-3 md:gap-4 md:p-4"
+                className={clsx(
+                  'relative flex shrink-0 items-center gap-3 border-l-4 bg-[#1b1b1b] p-3 md:gap-4 md:p-4',
+                  awaitingPromptResponse ? 'border-[#ffaaf6]/60' : 'border-[#35ebeb]',
+                )}
                 onClick={(e) => e.stopPropagation()}
               >
                 <span className="text-xl font-black tracking-widest text-[#35ebeb]">&gt;</span>
@@ -1150,7 +1224,9 @@ export default function App() {
                       onFocus={() => setPromptFocused(true)}
                       onBlur={() => setPromptFocused(false)}
                       className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-[#35ebeb] caret-transparent placeholder:text-[#35ebeb]/30 focus:ring-0"
-                      placeholder={inputValue ? '' : 'ENTER COMMAND...'}
+                      placeholder={
+                        inputValue ? '' : awaitingPromptResponse ? 'ENTER RESPONSE...' : 'ENTER COMMAND...'
+                      }
                       disabled={state.isGameOver}
                     />
                     {promptFocused && !state.isGameOver && (
@@ -1188,7 +1264,7 @@ export default function App() {
                     type="submit"
                     onMouseEnter={hoverUi}
                     className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] p-2 text-[#35ebeb] active:scale-[0.99] lg:hidden"
-                    aria-label="Submit command"
+                    aria-label={awaitingPromptResponse ? 'Submit response' : 'Submit command'}
                   >
                     <CornerDownLeft size={18} strokeWidth={2.5} />
                   </button>
@@ -1199,6 +1275,7 @@ export default function App() {
                   </div>
                 )}
               </form>
+              </div>
             </motion.section>
           </main>
 

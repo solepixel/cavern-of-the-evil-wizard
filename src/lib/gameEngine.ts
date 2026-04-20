@@ -5,9 +5,11 @@ import {
   Interaction,
   ItemId,
   REUSE_INTERACTION_EXAMINE,
+  SetPromptSpec,
 } from '../types';
-import { SCENES, ITEMS, OBJECTS, INITIAL_STATE } from '../gameData';
+import { SCENES, ITEMS, OBJECTS, INITIAL_STATE, runSceneEnterHook } from '../gameData';
 import { audioService, saveAudioPreferences } from './audioService';
+import { SCORE_FIRST_ENTER_SCENE, SCORE_PICKUP_ITEM } from './gameScoring';
 import {
   DEFAULT_LEGACY_STATE_KEY,
   getObjectAxes,
@@ -79,6 +81,7 @@ export function loadSaveSlot(id: string): GameState | null {
     if (!rec.state.equippedItemIds) rec.state.equippedItemIds = [];
     migrateLegacyWardrobeState(rec.state);
     migrateLegacyRugState(rec.state);
+    migrateModernGameplayFields(rec.state);
     return rec.state;
   } catch {
     return null;
@@ -193,8 +196,153 @@ function sceneOnLoadFlag(sceneId: string): string {
   return `__sceneOnLoad__:${sceneId}`;
 }
 
-/** After `currentSceneId` is set to `sceneId`: one-shot `onLoad`, or scene `description` for revisits / scenes without onLoad. */
-function applySceneArrival(state: GameState, sceneId: string, preamble?: string): GameState {
+function normalizePromptKey(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/^the\s+/i, '');
+}
+
+function normalizePromptAliases(spec: SetPromptSpec): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(spec.aliases)) {
+    out[normalizePromptKey(k)] = v;
+  }
+  return out;
+}
+
+function clearDeadlineFields(s: GameState): GameState {
+  return {
+    ...s,
+    deadlineAtMs: undefined,
+    deadlineSceneId: undefined,
+    deadlineReason: undefined,
+    deadlineTurnsLeft: undefined,
+  };
+}
+
+/** Wall-clock / turn deadline fired at the start of a player command. */
+export function applyDeadlineExpired(state: GameState): GameState {
+  if (state.isGameOver) return state;
+  if (!state.deadlineSceneId || state.currentSceneId !== state.deadlineSceneId) return state;
+  const replaceName = (t: string) => t.replace(/{{name}}/g, state.playerName);
+  const cleared = clearDeadlineFields({ ...state, pendingPrompt: undefined });
+  const reason = state.deadlineReason;
+  let lines: string[];
+  if (reason === 'wizard_melt') {
+    lines = [
+      'Your hesitancy has cost you dearly...',
+      'The wizard. Sensing your apprehension, unleashes a fatal bolt from the ice scepter.',
+      'With luck, you will thaw in several million years.',
+    ];
+  } else {
+    lines = [
+      'Your hesitancy has cost you dearly...',
+      'Footsteps thunder on the landing. You wasted the only window you had.',
+    ];
+  }
+  return revertProgressStatsToCheckpoint({
+    ...cleared,
+    history: [...cleared.history, ...lines.map(replaceName), fatalLine('YOU HAVE DIED.')],
+    isGameOver: true,
+    hp: 0,
+  });
+}
+
+function checkDeadlineAtCommandStart(s: GameState): GameState | null {
+  if (s.isGameOver) return null;
+  if (!s.deadlineSceneId || s.currentSceneId !== s.deadlineSceneId) return null;
+  const timeExpired = s.deadlineAtMs !== undefined && Date.now() > s.deadlineAtMs;
+  const turnsExpired = s.deadlineTurnsLeft !== undefined && s.deadlineTurnsLeft <= 0;
+  if (!timeExpired && !turnsExpired) return null;
+  return applyDeadlineExpired(s);
+}
+
+function applyScoreDelta(state: GameState, delta?: number): GameState {
+  if (delta === undefined || delta === 0) return state;
+  return { ...state, score: (state.score ?? 0) + delta };
+}
+
+function applySetPromptFromSpec(state: GameState, spec?: SetPromptSpec): GameState {
+  if (!spec) return state;
+  return {
+    ...state,
+    pendingPrompt: {
+      id: spec.id,
+      expiresAtMs: spec.expiresAtMs,
+      aliases: normalizePromptAliases(spec),
+    },
+  };
+}
+
+function postCommandTurn(
+  preCmdState: GameState,
+  result: GameState,
+  pendingAliasConsumed: boolean,
+): GameState {
+  let next = result;
+  if (
+    !pendingAliasConsumed &&
+    preCmdState.pendingPrompt &&
+    next.pendingPrompt &&
+    next.pendingPrompt.id === preCmdState.pendingPrompt.id
+  ) {
+    next = { ...next, pendingPrompt: undefined };
+  }
+  if (next.isGameOver) return next;
+  const hadTurnDeadline =
+    preCmdState.deadlineSceneId &&
+    preCmdState.currentSceneId === preCmdState.deadlineSceneId &&
+    preCmdState.deadlineTurnsLeft !== undefined;
+  if (
+    hadTurnDeadline &&
+    next.deadlineSceneId &&
+    next.currentSceneId === next.deadlineSceneId &&
+    next.deadlineTurnsLeft !== undefined
+  ) {
+    return { ...next, deadlineTurnsLeft: Math.max(0, next.deadlineTurnsLeft - 1) };
+  }
+  return next;
+}
+
+function migrateModernGameplayFields(state: GameState) {
+  if (typeof state.score !== 'number' || Number.isNaN(state.score)) state.score = 0;
+}
+
+/**
+ * On death, cumulative score (and any future economy fields mirrored on `lastCheckpoint`) should match
+ * the last save point — the doomed run does not keep points earned after that checkpoint.
+ */
+function revertProgressStatsToCheckpoint(state: GameState): GameState {
+  const cp = state.lastCheckpoint;
+  if (!cp) return state;
+  return {
+    ...state,
+    score: cp.score ?? 0,
+  };
+}
+
+function isBedroomDoorUnlocked(state: GameState): boolean {
+  const door = OBJECTS.door;
+  if (!door) return true;
+  const axes = getObjectAxes(state, 'door', door);
+  const lk = door.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY;
+  return (axes[lk] ?? door.initialState) === 'unlocked';
+}
+
+/**
+ * After `currentSceneId` is set to `sceneId`: one-shot `onLoad`, or scene `description` for revisits / scenes without onLoad.
+ * `implicitCarry` — implicit score already earned this command (e.g. interaction pickup) merged into this arrival’s score bump.
+ * SFX: only `onLoad.sound` / interaction `playSound` etc.; no automatic fanfare for implicit score.
+ */
+function applySceneArrival(
+  state: GameState,
+  sceneId: string,
+  preamble?: string,
+  fromSceneId?: string,
+  implicitCarry = 0,
+): GameState {
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
   const scene = SCENES[sceneId];
   if (!scene) {
@@ -210,6 +358,8 @@ function applySceneArrival(state: GameState, sceneId: string, preamble?: string)
   const parts: string[] = [];
   if (preamble) parts.push(replaceName(preamble));
 
+  let implicitScore = implicitCarry;
+
   if (firstOnLoad && onLoad) {
     next.flags[key] = true;
     if (onLoad.text) parts.push(replaceName(onLoad.text));
@@ -219,9 +369,9 @@ function applySceneArrival(state: GameState, sceneId: string, preamble?: string)
       next.uiVisible = true;
       next.pendingItem = onLoad.getItem;
       if (onLoad.getItem === 'map') next.hasMap = true;
+      implicitScore += SCORE_PICKUP_ITEM;
     }
     if (onLoad.removeItem && next.inventory.includes(onLoad.removeItem)) {
-      audioService.playSound('achievement');
       next.inventory = next.inventory.filter((id) => id !== onLoad.removeItem!);
     }
     if (onLoad.setFlags) {
@@ -243,6 +393,18 @@ function applySceneArrival(state: GameState, sceneId: string, preamble?: string)
     saveCheckpoint(next);
   }
 
+  next = runSceneEnterHook(next, sceneId, fromSceneId);
+
+  const progressKey = `__sceneProgressScore__:${sceneId}`;
+  if (fromSceneId && fromSceneId !== sceneId && !next.flags[progressKey]) {
+    next.flags = { ...next.flags, [progressKey]: true };
+    implicitScore += SCORE_FIRST_ENTER_SCENE;
+  }
+
+  if (implicitScore > 0) {
+    next = { ...next, score: (next.score ?? 0) + implicitScore };
+  }
+
   return next;
 }
 
@@ -254,6 +416,11 @@ export function resumeFromGameOverSnapshot(snapshot: GameState): GameState {
     isGameOver: false,
     hp,
     pendingItem: null,
+    pendingPrompt: undefined,
+    deadlineAtMs: undefined,
+    deadlineSceneId: undefined,
+    deadlineReason: undefined,
+    deadlineTurnsLeft: undefined,
   };
 }
 
@@ -407,6 +574,7 @@ export function loadGame(): GameState | null {
       if (!parsed.equippedItemIds) parsed.equippedItemIds = [];
       migrateLegacyWardrobeState(parsed);
       migrateLegacyRugState(parsed);
+      migrateModernGameplayFields(parsed);
       return parsed;
     } catch (e) {
       console.error('Failed to load game', e);
@@ -421,12 +589,49 @@ export function saveCheckpoint(state: GameState) {
 }
 
 export function processCommand(state: GameState, input: string): GameState {
-  const command = input.toLowerCase().trim();
-  const currentScene = SCENES[state.currentSceneId];
+  const displayLine = input.trim();
+  if (!displayLine) return state;
 
-  let newState = { ...state, history: [...state.history, `> ${input}`] };
+  let base = state;
+  if (base.pendingPrompt?.expiresAtMs && Date.now() > base.pendingPrompt.expiresAtMs) {
+    base = { ...base, pendingPrompt: undefined };
+  }
 
-  const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
+  if (!base.isGameOver) {
+    const deadlineDeath = checkDeadlineAtCommandStart(base);
+    if (deadlineDeath) {
+      return {
+        ...revertProgressStatsToCheckpoint(deadlineDeath),
+        history: [...deadlineDeath.history, `> ${displayLine}`],
+      };
+    }
+  }
+
+  let effectiveLine = displayLine;
+  let pendingAliasConsumed = false;
+  if (base.pendingPrompt) {
+    const norm = normalizePromptKey(displayLine);
+    const mapped = base.pendingPrompt.aliases[norm];
+    if (mapped) {
+      effectiveLine = mapped.trim();
+      pendingAliasConsumed = true;
+      base = { ...base, pendingPrompt: undefined };
+    }
+  }
+
+  const preCmdStateForTurn = base;
+  const finish = (out: GameState) => {
+    const afterDeath =
+      out.isGameOver ? revertProgressStatsToCheckpoint(out) : out;
+    return postCommandTurn(preCmdStateForTurn, afterDeath, pendingAliasConsumed);
+  };
+
+  const command = effectiveLine.toLowerCase().trim();
+  const currentScene = SCENES[base.currentSceneId];
+
+  let newState = { ...base, history: [...base.history, `> ${displayLine}`] };
+
+  const replaceName = (text: string) => text.replace(/{{name}}/g, base.playerName);
 
   /**
    * Built-in commands live in a JSON-like table with regex strings.
@@ -444,6 +649,11 @@ export function processCommand(state: GameState, input: string): GameState {
         const invItems = s.inventory.map((id) => ITEMS[id].name).join(', ');
         return { ...s, history: [...s.history, sysLine(`Inventory: ${invItems || 'Empty'}`)] };
       },
+    },
+    {
+      id: 'score',
+      patterns: ['^(score|points)$'],
+      run: (s) => ({ ...s, history: [...s.history, sysLine(`Score: ${s.score ?? 0}`)] }),
     },
     {
       id: 'map',
@@ -514,7 +724,7 @@ export function processCommand(state: GameState, input: string): GameState {
         ...s,
         history: [
           ...s.history,
-          "Try commands like 'look', 'examine self', 'equip <item>', 'inventory', 'go [direction]', 'take [item]', or 'use [item] on [object]'.",
+          "Try commands like 'look', 'examine self', 'equip <item>', 'inventory', 'score', 'go [direction]', 'take [item]', or 'use [item] on [object]'.",
         ],
       }),
     },
@@ -532,7 +742,7 @@ export function processCommand(state: GameState, input: string): GameState {
     for (const pat of cmd.patterns) {
       const re = new RegExp(pat, 'i');
       if (re.test(command)) {
-        return cmd.run(newState);
+        return finish(cmd.run(newState));
       }
     }
   }
@@ -543,12 +753,12 @@ export function processCommand(state: GameState, input: string): GameState {
     const itemId = resolveItemInInventory(phrase, newState.inventory);
     if (!itemId) {
       newState.history.push("You don't have anything like that in your inventory.");
-      return newState;
+      return finish(newState);
     }
     const item = ITEMS[itemId];
     if (!item?.equippable) {
       newState.history.push("That isn't something you can wear.");
-      return newState;
+      return finish(newState);
     }
     const slot = item.equipmentSlot ?? itemId;
     const prev = newState.equippedItemIds ?? [];
@@ -556,7 +766,7 @@ export function processCommand(state: GameState, input: string): GameState {
     const equippedItemIds = dedupeIds([...withoutSlot, itemId]);
     newState.equippedItemIds = equippedItemIds;
     newState.history.push(replaceName(item.useText));
-    return newState;
+    return finish(newState);
   }
 
   const unequipMatch = command.match(/^unequip\s+(?:the\s+)?(.+)$/i);
@@ -565,11 +775,11 @@ export function processCommand(state: GameState, input: string): GameState {
     const itemId = resolveItemInInventory(phrase, newState.equippedItemIds ?? []);
     if (!itemId) {
       newState.history.push("You're not wearing anything that matches that description.");
-      return newState;
+      return finish(newState);
     }
     newState.equippedItemIds = (newState.equippedItemIds ?? []).filter((id) => id !== itemId);
     newState.history.push(`You take off the ${ITEMS[itemId]?.name ?? itemId}.`);
-    return newState;
+    return finish(newState);
   }
 
   const examineTarget = parseExamineTarget(command);
@@ -583,7 +793,7 @@ export function processCommand(state: GameState, input: string): GameState {
         const desc = resolveObjectDescription(obj, axes);
         if (desc) {
           newState.history.push(replaceName(desc));
-          return newState;
+          return finish(newState);
         }
       }
     }
@@ -596,7 +806,7 @@ export function processCommand(state: GameState, input: string): GameState {
     const refresh = currentScene.examineRefreshText ?? currentScene.description;
     if (refresh) {
       newState.history.push(replaceName(refresh));
-      return newState;
+      return finish(newState);
     }
   }
 
@@ -638,16 +848,16 @@ export function processCommand(state: GameState, input: string): GameState {
         const stateDesc = resolveObjectDescription(obj, currentAxes);
         if (stateDesc) {
           newState.history.push(replaceName(stateDesc));
-          return newState;
+          return finish(newState);
         }
       }
 
-      return applyInteraction(newState, interaction, objId);
+      return finish(applyInteraction(newState, interaction, objId));
     }
 
     if (inventoryBlockMessage) {
       newState.history.push(replaceName(inventoryBlockMessage));
-      return newState;
+      return finish(newState);
     }
   }
 
@@ -664,38 +874,47 @@ export function processCommand(state: GameState, input: string): GameState {
 
     const response = responseKey ? currentScene.commands[responseKey] : undefined;
     if (response) {
-      return applyResponse(newState, response);
+      return finish(applyResponse(newState, response));
     }
   }
 
   // Check for generic "take" or "use" patterns if not explicitly defined
   if (command.startsWith('take ')) {
     newState.history.push(`You can't take that right now.`);
-    return newState;
+    return finish(newState);
   }
 
   if (command.startsWith('use ')) {
     newState.history.push(`I don't know how to use that here.`);
-    return newState;
+    return finish(newState);
   }
 
-  // Check for movement
-  if (command.startsWith('go ')) {
-    const direction = command.replace('go ', '').trim();
+  // Movement: same exit table as `go <dir>`, also accepts `walk` / `head`.
+  const moveMatch = command.match(/^(go|walk|head)\s+(.+)$/i);
+  if (moveMatch) {
+    const direction = moveMatch[2].trim().toLowerCase();
     const nextSceneId = currentScene.exits[direction];
     if (nextSceneId) {
+      if (newState.currentSceneId === 'bedroom' && nextSceneId === 'hallway' && !isBedroomDoorUnlocked(newState)) {
+        newState.history.push(
+          "The door to the hall won't open—it's locked from the outside. You'll need a key (or another way) before you can leave.",
+        );
+        return finish(newState);
+      }
+      const fromSceneId = newState.currentSceneId;
       newState.currentSceneId = nextSceneId;
-      newState = applySceneArrival(newState, nextSceneId, undefined);
-      return newState;
+      newState = applySceneArrival(newState, nextSceneId, undefined, fromSceneId);
+      return finish(newState);
     }
   }
 
   newState.history.push("Command not recognized.");
-  return newState;
+  return finish(newState);
 }
 
 function applyInteraction(state: GameState, interaction: Interaction, objId?: string): GameState {
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
+  let implicitScore = 0;
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
 
   const obj = objId ? OBJECTS[objId] : undefined;
@@ -715,7 +934,7 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
     if (!actuallyChanges) {
       const msg = interaction.redundantMessage ?? interaction.text ?? 'Nothing changes.';
       newState.history.push(replaceName(msg));
-      return newState;
+      return applyScoreDelta(newState, interaction.scoreDelta);
     }
     const merged = { ...prevAxes, ...patchResolved };
     newState.objectStates = { ...newState.objectStates, [objId]: merged };
@@ -727,13 +946,11 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
       newState.uiVisible = true;
       newState.pendingItem = interaction.getItem;
       if (interaction.getItem === 'map') newState.hasMap = true;
+      implicitScore += SCORE_PICKUP_ITEM;
     }
   }
 
   if (interaction.removeItem) {
-    if (newState.inventory.includes(interaction.removeItem)) {
-      audioService.playSound('achievement');
-    }
     newState.inventory = newState.inventory.filter((id) => id !== interaction.removeItem);
     newState.equippedItemIds = stripEquippedNotInInventory(newState, newState.inventory);
   }
@@ -755,10 +972,13 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
   }
 
   if (interaction.nextScene) {
+    const fromSceneId = state.currentSceneId;
     newState.currentSceneId = interaction.nextScene;
     const nextScene = SCENES[interaction.nextScene];
     if (nextScene) {
-      newState = applySceneArrival(newState, interaction.nextScene, interaction.text);
+      const carryImplicit = implicitScore;
+      implicitScore = 0;
+      newState = applySceneArrival(newState, interaction.nextScene, interaction.text, fromSceneId, carryImplicit);
     } else if (interaction.text) {
       newState.history.push(replaceName(interaction.text));
     }
@@ -778,11 +998,31 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
     audioService.playSound(interaction.playSound);
   }
 
+  if (interaction.clearDeadline) {
+    newState = clearDeadlineFields(newState);
+  }
+  if (interaction.setDeadline) {
+    const d = interaction.setDeadline;
+    newState = {
+      ...newState,
+      deadlineAtMs: Date.now() + d.deadlineMsFromNow,
+      deadlineTurnsLeft: d.deadlineTurnsLeft,
+      deadlineSceneId: d.deadlineSceneId,
+      deadlineReason: d.deadlineReason,
+    };
+  }
+  newState = applyScoreDelta(newState, interaction.scoreDelta);
+  if (implicitScore > 0) {
+    newState = { ...newState, score: (newState.score ?? 0) + implicitScore };
+  }
+  newState = applySetPromptFromSpec(newState, interaction.setPrompt);
+
   return newState;
 }
 
 function applyResponse(state: GameState, response: CommandResponse): GameState {
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
+  let implicitScore = 0;
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
   if (!responseInventoryAllows(newState, response)) {
     const msg = response.missingRequirementsMessage ?? "You don't have what you need to do that.";
@@ -796,13 +1036,11 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
       newState.uiVisible = true;
       newState.pendingItem = response.getItem;
       if (response.getItem === 'map') newState.hasMap = true;
+      implicitScore += SCORE_PICKUP_ITEM;
     }
   }
 
   if (response.removeItem) {
-    if (newState.inventory.includes(response.removeItem)) {
-      audioService.playSound('achievement');
-    }
     newState.inventory = newState.inventory.filter((id) => id !== response.removeItem);
     newState.equippedItemIds = stripEquippedNotInInventory(newState, newState.inventory);
   }
@@ -824,10 +1062,13 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
   }
 
   if (response.nextScene) {
+    const fromSceneId = state.currentSceneId;
     newState.currentSceneId = response.nextScene;
     const nextScene = SCENES[response.nextScene];
     if (nextScene) {
-      newState = applySceneArrival(newState, response.nextScene, response.text);
+      const carryImplicit = implicitScore;
+      implicitScore = 0;
+      newState = applySceneArrival(newState, response.nextScene, response.text, fromSceneId, carryImplicit);
     } else if (response.text) {
       newState.history.push(replaceName(response.text));
     }
@@ -842,6 +1083,15 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
   if (response.callback) {
     newState = response.callback(newState);
   }
+
+  if (response.clearDeadline) {
+    newState = clearDeadlineFields(newState);
+  }
+  newState = applyScoreDelta(newState, response.scoreDelta);
+  if (implicitScore > 0) {
+    newState = { ...newState, score: (newState.score ?? 0) + implicitScore };
+  }
+  newState = applySetPromptFromSpec(newState, response.setPrompt);
 
   return newState;
 }

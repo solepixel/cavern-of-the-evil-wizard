@@ -23,6 +23,26 @@ export interface SceneOnLoad {
   setFlags?: Record<string, boolean | string | number>;
 }
 
+/**
+ * Narrow follow-up prompt: next player line is matched against `aliases` keys (normalized);
+ * on match, input is rewritten to the alias value (canonical command) before parsing.
+ */
+export interface SetPromptSpec {
+  id: string;
+  /** If set, prompt clears automatically after this epoch ms (checked in `processCommand`). */
+  expiresAtMs?: number;
+  /** Map of normalized player phrase -> canonical command string. */
+  aliases: Record<string, string>;
+}
+
+export type DeadlineReason = 'hallway_hurry' | 'wizard_melt' | string;
+
+export interface PendingPrompt {
+  id: string;
+  expiresAtMs?: number;
+  aliases: Record<string, string>;
+}
+
 export interface Item {
   id: ItemId;
   name: string;
@@ -87,6 +107,19 @@ export interface Interaction {
   playSound?: GameSfxSpec;
   /** When false, omit from command suggestions (easter egg). */
   autoComplete?: boolean;
+  /** Add to score when this interaction resolves successfully. */
+  scoreDelta?: number;
+  /** After this interaction runs, set a follow-up prompt for the next command. */
+  setPrompt?: SetPromptSpec;
+  /** Clear any active timed-decision deadline (e.g. after successful escape). */
+  clearDeadline?: boolean;
+  /** Start a timed decision (wall-clock + turn fallback) when this interaction resolves. */
+  setDeadline?: {
+    deadlineMsFromNow: number;
+    deadlineTurnsLeft: number;
+    deadlineSceneId: string;
+    deadlineReason: DeadlineReason;
+  };
   callback?: (state: GameState) => GameState;
 }
 
@@ -138,6 +171,9 @@ export interface CommandResponse {
   missingRequirementsMessage?: string;
   damage?: number;
   isDeath?: boolean;
+  scoreDelta?: number;
+  setPrompt?: SetPromptSpec;
+  clearDeadline?: boolean;
   callback?: (state: GameState) => GameState;
 }
 
@@ -162,6 +198,18 @@ export interface GameState {
   focusedObjectId?: ObjectId;
   /** Items currently worn (subset of inventory); appearance text comes from item `wearDescription`. */
   equippedItemIds: ItemId[];
+  /** Cumulative adventure score (movie-game style). */
+  score: number;
+  /** Follow-up question context (narrow alias resolution). */
+  pendingPrompt?: PendingPrompt;
+  /** Wall-clock deadline for the current timed decision (ms since epoch). */
+  deadlineAtMs?: number;
+  /** Scene id the deadline applies to (must match `currentSceneId` to count). */
+  deadlineSceneId?: string;
+  /** Used to pick death / narrative when time runs out. */
+  deadlineReason?: DeadlineReason;
+  /** Turn-based fallback: decrements once per command while in `deadlineSceneId`. */
+  deadlineTurnsLeft?: number;
 }
 
 export const INITIAL_STATE: GameState = {
@@ -181,6 +229,7 @@ export const INITIAL_STATE: GameState = {
   pendingItem: null,
   focusedObjectId: undefined,
   equippedItemIds: [],
+  score: 0,
 };
 
 export interface CutsceneChoice {

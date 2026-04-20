@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
+import clsx from 'clsx';
 import { motion, LayoutGroup } from 'motion/react';
 import { Scene } from '../types';
 import { audioService } from '../lib/audioService';
 import { CUTSCENE_HANDOFF_DELAY_MS, cutsceneEase, cutsceneImageMotion } from '../lib/cutsceneTransition';
 
+/** When side panels are shown (`App` `uiVisible`): match main column between `w-64` / `w-80` rails. */
+const HANDOFF_VIEWPORT_CHROMED =
+  'max-lg:inset-x-0 lg:left-64 lg:right-80 lg:w-auto';
+
+/** When chrome is hidden (e.g. intro): main is full width — handoff must not inset for absent sidebars. */
+const HANDOFF_VIEWPORT_FULL = 'inset-x-0';
+
 interface CutsceneProps {
   scene: Scene;
+  /** When false, left/right game panels are hidden — use full-width handoff to match the main viewport. */
+  gameChromeVisible: boolean;
   onChoice: (command: string) => void;
 }
 
-export default function Cutscene({ scene, onChoice }: CutsceneProps) {
+export default function Cutscene({ scene, onChoice, gameChromeVisible }: CutsceneProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number | null>(null);
   const choices = Object.keys(scene.commands ?? {});
@@ -30,11 +40,17 @@ export default function Cutscene({ scene, onChoice }: CutsceneProps) {
   const copyEase = cutsceneEase.copy;
   const { blurIdlePx, blurClearSec, scaleIdle } = cutsceneImageMotion;
 
+  const handoffHorizontal =
+    gameChromeVisible ? HANDOFF_VIEWPORT_CHROMED : HANDOFF_VIEWPORT_FULL;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[60] overflow-hidden bg-transparent"
+      className={clsx(
+        'fixed inset-0 z-[60] overflow-hidden bg-transparent',
+        isTransitioning && 'pointer-events-none',
+      )}
     >
       {/* Darken idle gameplay beneath; peel away during handoff so terminal can read as “over” the scene */}
       <motion.div
@@ -51,36 +67,29 @@ export default function Cutscene({ scene, onChoice }: CutsceneProps) {
             isTransitioning ? 'px-0 py-0' : 'justify-center px-4 py-6 md:px-8'
           } ${isTransitioning ? 'justify-between' : ''}`}
         >
-          {/* PANEL_01 — full-bleed upper half (padding dropped during handoff so layout isn’t inset); tween layout avoids spring overshoot */}
+          {/* PANEL_01 — `layoutId` must live on this bordered node so the shell isn’t left at z-[70] after the image flies to gameplay. */}
           <motion.div
-            layout
-            transition={{
-              layout: { type: 'tween', duration: 0.62, ease: copyEase },
+            layout={false}
+            layoutId={handoffLayoutId}
+            initial={false}
+            animate={{
+              filter: isTransitioning ? 'blur(0px) brightness(1)' : `blur(${blurIdlePx}px) brightness(0.52)`,
+              scale: isTransitioning ? 1 : scaleIdle,
             }}
-            className={`relative z-[70] overflow-hidden border-8 border-[#ffffff] shadow-[0_0_50px_rgba(255,255,255,0.2)] ${
+            transition={{
+              layout: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
+              filter: { duration: blurClearSec, ease: imageEase },
+              scale: { duration: blurClearSec, ease: imageEase },
+            }}
+            className={clsx(
+              'relative z-[70] overflow-hidden border-8 border-[#ffffff] shadow-[0_0_50px_rgba(255,255,255,0.2)]',
               isTransitioning
-                ? 'fixed inset-x-0 top-0 z-[75] h-[50svh] max-w-none rounded-none'
-                : 'mx-auto aspect-[21/9] w-full max-w-4xl rounded-sm'
-            }`}
+                ? ['fixed top-0 z-[75] h-[50svh] max-w-none rounded-none', handoffHorizontal]
+                : 'mx-auto aspect-[21/9] w-full max-w-4xl rounded-sm',
+            )}
           >
             {visualSrc ? (
-              <motion.div
-                layout={false}
-                layoutId={handoffLayoutId}
-                className="absolute inset-0"
-                initial={false}
-                animate={{
-                  filter: isTransitioning ? 'blur(0px) brightness(1)' : `blur(${blurIdlePx}px) brightness(0.52)`,
-                  scale: isTransitioning ? 1 : scaleIdle,
-                }}
-                transition={{
-                  layout: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
-                  filter: { duration: blurClearSec, ease: imageEase },
-                  scale: { duration: blurClearSec, ease: imageEase },
-                }}
-              >
-                <img src={visualSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-              </motion.div>
+              <img src={visualSrc} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="absolute inset-0 bg-[#1b1b1b]/90 backdrop-blur-sm" />
             )}
@@ -172,7 +181,7 @@ export default function Cutscene({ scene, onChoice }: CutsceneProps) {
                   disabled={isTransitioning}
                   className={`group relative border-4 border-[#35ebeb] bg-[#131313] p-6 text-left transition-colors hover:bg-[#35ebeb] hover:text-[#131313] disabled:pointer-events-none ${
                     isSelected
-                      ? 'fixed inset-x-0 bottom-0 top-[50svh] z-[90] flex flex-col justify-center rounded-none border-[#35ebeb]'
+                      ? `fixed bottom-0 top-[50svh] z-[90] flex flex-col justify-center rounded-none border-[#35ebeb] ${handoffHorizontal}`
                       : ''
                   } ${isHiddenSibling ? 'pointer-events-none hidden' : ''}`}
                 >

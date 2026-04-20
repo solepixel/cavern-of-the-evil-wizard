@@ -30,6 +30,9 @@ export function buildGameplayDebugSnapshot(state: GameState): {
   const character = [
     `playerName: ${state.playerName || '(empty)'}`,
     `hp: ${state.hp} / ${state.maxHp}`,
+    `score: ${state.score ?? 0}`,
+    `deadline: ${state.deadlineSceneId ? `${state.deadlineSceneId} @${state.deadlineAtMs ?? '?'} turns=${state.deadlineTurnsLeft ?? '—'} (${state.deadlineReason ?? '—'})` : '(none)'}`,
+    `pendingPrompt: ${state.pendingPrompt ? `${state.pendingPrompt.id} (${Object.keys(state.pendingPrompt.aliases).length} aliases)` : '(none)'}`,
     `equippedItemIds: ${(state.equippedItemIds ?? []).length ? state.equippedItemIds!.join(', ') : '(none)'}`,
     `focusedObjectId: ${state.focusedObjectId ?? '(none)'}`,
     `uiVisible: ${state.uiVisible}`,
