@@ -17,6 +17,7 @@ import {
   Volume2,
   VolumeX,
   Volume1,
+  CornerDownLeft,
   Menu,
   X,
 } from 'lucide-react';
@@ -200,6 +201,8 @@ export default function App() {
   /** `log` opens the dev DATA_LOG debug panel (localhost / dev only). */
   const [infoModalKind, setInfoModalKind] = useState<InfoModalKind | 'log' | null>(null);
   const [sceneInteractionsVisible, setSceneInteractionsVisible] = useState(true);
+  const [inventoryPanelExpanded, setInventoryPanelExpanded] = useState(true);
+  const [sceneObjectsPanelExpanded, setSceneObjectsPanelExpanded] = useState(true);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const isNarrowMobile = useIsNarrowMobile();
@@ -771,6 +774,47 @@ export default function App() {
       <div className="flex h-screen flex-col overflow-hidden bg-[#131313] font-sans text-[#e2e2e2]">
         <div className="pointer-events-none fixed inset-0 opacity-20 crt-scanlines" />
 
+        {isNarrowMobile && (
+          <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-[#ffffff]/15 bg-[#131313]/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] backdrop-blur md:hidden">
+            {state.uiVisible ? (
+              <button
+                type="button"
+                onMouseEnter={hoverUi}
+                onClick={() => {
+                  setMobileRightOpen(false);
+                  setMobileLeftOpen((o) => !o);
+                }}
+                className={clsx(
+                  'flex h-11 w-11 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]',
+                  mobileLeftOpen && 'bg-[#35ebeb]/20 text-[#ffffff]',
+                )}
+                aria-expanded={mobileLeftOpen}
+                aria-label={mobileLeftOpen ? 'Close player menu' : 'Open player menu (status, map, inventory)'}
+              >
+                <Menu size={24} strokeWidth={2.5} />
+              </button>
+            ) : (
+              <span className="block h-11 w-11" aria-hidden />
+            )}
+
+            <div className="text-center text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Sentient Terminal</div>
+
+            <button
+              type="button"
+              onMouseEnter={hoverUi}
+              onClick={() => {
+                setMobileLeftOpen(false);
+                setMobileRightOpen(false);
+                setIsSettingsOpen(true);
+              }}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]"
+              aria-label="Open settings"
+            >
+              <CogIcon size={24} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+
         <LayoutGroup id="scene-viewport">
           <AnimatePresence>
             {isCutscene && <Cutscene scene={currentScene} onChoice={(choice) => handleCommand(undefined, choice)} />}
@@ -786,7 +830,12 @@ export default function App() {
             )}
           </AnimatePresence>
 
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div
+          className={clsx(
+            'relative flex min-h-0 flex-1 overflow-hidden',
+            isNarrowMobile && 'pt-[calc(env(safe-area-inset-top,0px)+3.25rem)]',
+          )}
+        >
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
@@ -1140,10 +1189,10 @@ export default function App() {
                   <button
                     type="submit"
                     onMouseEnter={hoverUi}
-                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#35ebeb] active:scale-[0.99] md:hidden"
+                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] p-2 text-[#35ebeb] active:scale-[0.99] md:hidden"
                     aria-label="Submit command"
                   >
-                    Send
+                    <CornerDownLeft size={18} strokeWidth={2.5} />
                   </button>
                 )}
                 {!state.uiVisible && (
@@ -1195,59 +1244,96 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <div className="flex min-h-0 flex-1 flex-col border-[#353535] p-4 max-md:border-b md:p-6">
-                    <h3 className="mb-3 flex shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6] md:mb-4">
-                      <Backpack size={18} /> INVENTORY
-                    </h3>
-                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                      {state.inventory.length > 0 ? (
-                        state.inventory.map((id) => {
-                          // @ts-expect-error dynamic icon
-                          const Icon = ITEMS[id].icon ? LucideIcons[ITEMS[id].icon] : LucideIcons.Package;
-                          return (
-                            <div
-                              key={id}
-                              className="group flex items-start gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 transition-all hover:bg-[#353535]"
-                            >
-                              <div className="mt-1 text-[#35ebeb]">
-                                <Icon size={16} />
+                  <div
+                    className={clsx(
+                      'flex min-h-0 flex-col border-[#353535] p-4 md:p-6',
+                      sceneInteractionsVisible && 'max-md:border-b',
+                      inventoryPanelExpanded ? 'flex-1' : 'flex-none',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => setInventoryPanelExpanded((v) => !v)}
+                      className="mb-3 flex w-full items-center justify-between gap-3 md:mb-4"
+                      aria-expanded={inventoryPanelExpanded}
+                    >
+                      <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
+                        <Backpack size={18} /> INVENTORY
+                      </span>
+                      <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
+                        {inventoryPanelExpanded ? '−' : '+'}
+                      </span>
+                    </button>
+                    {inventoryPanelExpanded && (
+                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
+                        {state.inventory.length > 0 ? (
+                          state.inventory.map((id) => {
+                            // @ts-expect-error dynamic icon
+                            const Icon = ITEMS[id].icon ? LucideIcons[ITEMS[id].icon] : LucideIcons.Package;
+                            return (
+                              <div
+                                key={id}
+                                className="group flex items-start gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 transition-all hover:bg-[#353535]"
+                              >
+                                <div className="mt-1 text-[#35ebeb]">
+                                  <Icon size={16} />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
+                                  <div className="mt-1 text-[10px] text-[#e2e2e2]/60">{ITEMS[id].description}</div>
+                                </div>
                               </div>
-                              <div>
-                                <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
-                                <div className="mt-1 text-[10px] text-[#e2e2e2]/60">{ITEMS[id].description}</div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
-                          Inventory is empty...
-                        </div>
-                      )}
-                    </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
+                            Inventory is empty...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {sceneInteractionsVisible && (
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:border-t md:border-[#353535] md:p-6">
-                      <h3 className="mb-3 flex shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70 md:mb-4">
-                        SCENE OBJECTS
-                      </h3>
-                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                        {sceneObjectRows.map(({ id, name, desc, Icon }) => (
-                          <div
-                            key={id}
-                            className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
-                          >
-                            <div className="mt-1 text-[#e2e2e2]/60">
-                              <Icon size={16} />
+                    <div
+                      className={clsx(
+                        'flex min-h-0 flex-col overflow-hidden p-4 md:border-t md:border-[#353535] md:p-6',
+                        sceneObjectsPanelExpanded ? 'flex-1' : 'flex-none',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onMouseEnter={hoverUi}
+                        onClick={() => setSceneObjectsPanelExpanded((v) => !v)}
+                        className="mb-3 flex w-full items-center justify-between gap-3 md:mb-4"
+                        aria-expanded={sceneObjectsPanelExpanded}
+                      >
+                        <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70">
+                          SCENE OBJECTS
+                        </span>
+                        <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
+                          {sceneObjectsPanelExpanded ? '−' : '+'}
+                        </span>
+                      </button>
+                      {sceneObjectsPanelExpanded && (
+                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
+                          {sceneObjectRows.map(({ id, name, desc, Icon }) => (
+                            <div
+                              key={id}
+                              className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
+                            >
+                              <div className="mt-1 text-[#e2e2e2]/60">
+                                <Icon size={16} />
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
+                                <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
+                              </div>
                             </div>
-                            <div>
-                              <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
-                              <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1271,45 +1357,6 @@ export default function App() {
         <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
           <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
             <div className="truncate text-center text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-            {isNarrowMobile && (
-              <div className="flex w-full items-center justify-between gap-3 border-t border-[#ffffff]/15 pt-2 md:hidden">
-                <div className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-start">
-                  {state.uiVisible ? (
-                    <button
-                      type="button"
-                      onMouseEnter={hoverUi}
-                      onClick={() => {
-                        setMobileRightOpen(false);
-                        setMobileLeftOpen((o) => !o);
-                      }}
-                      className={clsx(
-                        'flex h-11 w-11 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]',
-                        mobileLeftOpen && 'bg-[#35ebeb]/20 text-[#ffffff]',
-                      )}
-                      aria-expanded={mobileLeftOpen}
-                      aria-label={mobileLeftOpen ? 'Close player menu' : 'Open player menu (status, map, inventory)'}
-                    >
-                      <Menu size={24} strokeWidth={2.5} />
-                    </button>
-                  ) : (
-                    <span className="block h-11 w-11" aria-hidden />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onMouseEnter={hoverUi}
-                  onClick={() => {
-                    setMobileLeftOpen(false);
-                    setMobileRightOpen(false);
-                    setIsSettingsOpen(true);
-                  }}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]"
-                  aria-label="Open settings"
-                >
-                  <CogIcon size={24} strokeWidth={2} />
-                </button>
-              </div>
-            )}
             <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
               <div className="group flex items-center gap-2">
                 <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
