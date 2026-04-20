@@ -1136,6 +1136,16 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                {isNarrowMobile && !state.isGameOver && (
+                  <button
+                    type="submit"
+                    onMouseEnter={hoverUi}
+                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#35ebeb] active:scale-[0.99] md:hidden"
+                    aria-label="Submit command"
+                  >
+                    Send
+                  </button>
+                )}
                 {!state.uiVisible && (
                   <div className="hidden animate-pulse text-[10px] uppercase tracking-widest text-[#35ebeb]/50 md:block">
                     Try: &quot;look&quot;, &quot;open wardrobe&quot;, &quot;take key&quot;
