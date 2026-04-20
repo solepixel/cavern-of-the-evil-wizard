@@ -18,6 +18,7 @@ import {
   VolumeX,
   Volume1,
   CornerDownLeft,
+  PackageOpen,
   Menu,
   X,
 } from 'lucide-react';
@@ -51,8 +52,8 @@ import { getObjectAxes, resolveObjectDescription } from './lib/objectState';
 
 const initialAudioPrefs = loadAudioPreferences();
 
-/** Matches Tailwind `md:` breakpoint — layout tweaks for phones / small tablets. */
-const NARROW_MOBILE_MEDIA = '(max-width: 767px)';
+/** Matches Tailwind `lg:` breakpoint — use drawers until ~1024px. */
+const NARROW_MOBILE_MEDIA = '(max-width: 1023px)';
 
 function useIsNarrowMobile() {
   const [narrow, setNarrow] = useState(false);
@@ -91,8 +92,10 @@ function getSceneObjectRows(scene: Scene, state: GameState) {
       gadget: 'Cpu',
       zoltar: 'Sparkles',
     };
-    // @ts-expect-error dynamic icon
-    const Icon = (iconById[oid] ? LucideIcons[iconById[oid]] : LucideIcons.Package) as React.ComponentType<{ size?: number }>;
+    const iconKey = iconById[oid];
+    const Icon = ((iconKey ? (LucideIcons as any)[iconKey] : LucideIcons.Package) ?? LucideIcons.Package) as React.ComponentType<{
+      size?: number;
+    }>;
 
     return { id: oid, name, desc, Icon };
   });
@@ -461,7 +464,7 @@ export default function App() {
 
   const isDevDebugUi =
     typeof window !== 'undefined' &&
-    (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+    (((import.meta as any).env?.DEV as boolean | undefined) || ['localhost', '127.0.0.1'].includes(window.location.hostname));
 
   const infoModal = (
     <>
@@ -776,7 +779,7 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 opacity-20 crt-scanlines" />
 
         {isNarrowMobile && (
-          <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-[#ffffff]/15 bg-[#131313]/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] backdrop-blur md:hidden">
+          <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-[#ffffff]/15 bg-[#131313]/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] backdrop-blur lg:hidden">
             {state.uiVisible ? (
               <button
                 type="button"
@@ -805,13 +808,12 @@ export default function App() {
               onMouseEnter={hoverUi}
               onClick={() => {
                 setMobileLeftOpen(false);
-                setMobileRightOpen(false);
-                setIsSettingsOpen(true);
+                setMobileRightOpen(true);
               }}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]"
-              aria-label="Open settings"
+              aria-label="Open inventory and scene panel"
             >
-              <CogIcon size={24} strokeWidth={2} />
+              <PackageOpen size={24} strokeWidth={2} />
             </button>
           </div>
         )}
@@ -847,14 +849,14 @@ export default function App() {
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.32 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
                   'z-40 flex w-64 flex-col border-r-4 border-[#353535] bg-[#1b1b1b]',
-                  'md:relative md:h-auto md:max-h-none md:translate-x-0',
-                  'max-md:fixed max-md:left-0 max-md:top-0 max-md:z-[56] max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-[min(22rem,92vw)] max-md:overflow-y-auto max-md:shadow-[8px_0_40px_rgba(0,0,0,0.65)] max-md:transition-transform max-md:duration-300 max-md:ease-out',
-                  isNarrowMobile && !mobileLeftOpen && 'max-md:pointer-events-none max-md:-translate-x-full',
-                  isNarrowMobile && mobileLeftOpen && 'max-md:translate-x-0',
+                  'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',
+                  'max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:z-[56] max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
+                  isNarrowMobile && !mobileLeftOpen && 'max-lg:pointer-events-none max-lg:-translate-x-full',
+                  isNarrowMobile && mobileLeftOpen && 'max-lg:translate-x-0',
                 )}
               >
                 {isNarrowMobile && (
-                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 md:hidden">
+                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 lg:hidden">
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Player menu</span>
                     <button
                       type="button"
@@ -962,12 +964,7 @@ export default function App() {
               className={clsx(
                 'group relative shrink-0 overflow-hidden border-b-4 border-[#353535] bg-black',
                 'md:h-[50%]',
-                isNarrowMobile
-                  ? clsx(
-                      'transition-[height] duration-200 ease-out',
-                      promptFocused ? 'h-[58%] min-h-[11rem]' : 'h-[42%] min-h-[9.5rem]',
-                    )
-                  : 'h-[50%]',
+                isNarrowMobile ? 'h-[42%] min-h-[9.5rem]' : 'h-[50%]',
               )}
             >
               <AnimatePresence mode="wait">
@@ -1059,7 +1056,7 @@ export default function App() {
               }}
               className={clsx(
                 'flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:p-6',
-                isNarrowMobile && promptFocused && 'max-h-[42vh] min-h-0',
+                isNarrowMobile && 'min-h-0',
               )}
               onClick={() => setSkipTypewriter(true)}
             >
@@ -1190,7 +1187,7 @@ export default function App() {
                   <button
                     type="submit"
                     onMouseEnter={hoverUi}
-                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] p-2 text-[#35ebeb] active:scale-[0.99] md:hidden"
+                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] p-2 text-[#35ebeb] active:scale-[0.99] lg:hidden"
                     aria-label="Submit command"
                   >
                     <CornerDownLeft size={18} strokeWidth={2.5} />
@@ -1209,7 +1206,7 @@ export default function App() {
             <button
               type="button"
               aria-label="Dismiss inventory panel"
-              className="fixed inset-0 z-[50] bg-black/60 md:hidden"
+              className="fixed inset-0 z-[50] bg-black/60 lg:hidden"
               onClick={() => setMobileRightOpen(false)}
             />
           )}
@@ -1224,14 +1221,14 @@ export default function App() {
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.34 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
                   'z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0',
-                  'md:relative md:h-auto md:max-h-none md:translate-x-0',
-                  'max-md:fixed max-md:right-0 max-md:top-0 max-md:z-[56] max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-[min(22rem,92vw)] max-md:overflow-y-auto max-md:shadow-[-8px_0_40px_rgba(0,0,0,0.65)] max-md:transition-transform max-md:duration-300 max-md:ease-out',
-                  isNarrowMobile && !mobileRightOpen && 'max-md:pointer-events-none max-md:translate-x-full',
-                  isNarrowMobile && mobileRightOpen && 'max-md:translate-x-0',
+                  'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',
+                  'max-lg:fixed max-lg:right-0 max-lg:top-0 max-lg:z-[56] max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[-8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
+                  isNarrowMobile && !mobileRightOpen && 'max-lg:pointer-events-none max-lg:translate-x-full',
+                  isNarrowMobile && mobileRightOpen && 'max-lg:translate-x-0',
                 )}
               >
                 {isNarrowMobile && (
-                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 md:hidden">
+                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 lg:hidden">
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Inventory &amp; scene</span>
                     <button
                       type="button"
@@ -1273,8 +1270,11 @@ export default function App() {
                       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
                         {state.inventory.length > 0 ? (
                           state.inventory.map((id) => {
-                            // @ts-expect-error dynamic icon
-                            const Icon = ITEMS[id].icon ? LucideIcons[ITEMS[id].icon] : LucideIcons.Package;
+                            const iconKey = ITEMS[id].icon as keyof typeof LucideIcons | undefined;
+                            const Icon =
+                              (iconKey && (LucideIcons as any)[iconKey]
+                                ? ((LucideIcons as any)[iconKey] as React.ComponentType<{ size?: number }>)
+                                : (LucideIcons.Package as React.ComponentType<{ size?: number }>));
                             return (
                               <div
                                 key={id}
@@ -1363,7 +1363,24 @@ export default function App() {
 
         <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
           <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
-            <div className="truncate text-center text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
+            <div className="flex items-center justify-between gap-3 md:block">
+              <div className="truncate text-left text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
+              {isNarrowMobile && (
+                <button
+                  type="button"
+                  onMouseEnter={hoverUi}
+                  onClick={() => {
+                    setMobileLeftOpen(false);
+                    setMobileRightOpen(false);
+                    setIsSettingsOpen(true);
+                  }}
+                  className="shrink-0 rounded-full p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] lg:hidden"
+                  aria-label="Open settings"
+                >
+                  <CogIcon size={18} strokeWidth={2} />
+                </button>
+              )}
+            </div>
             <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
               <div className="group flex items-center gap-2">
                 <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
