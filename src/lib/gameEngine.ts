@@ -8,6 +8,12 @@ import {
 } from '../types';
 import { SCENES, ITEMS, OBJECTS, INITIAL_STATE } from '../gameData';
 import { audioService, saveAudioPreferences } from './audioService';
+import {
+  DEFAULT_LEGACY_STATE_KEY,
+  getObjectAxes,
+  interactionWhenMatches,
+  resolveObjectDescription,
+} from './objectState';
 
 const SAVE_KEY = 'cavern_evil_wizard_save';
 const SAVE_SLOTS_KEY = 'cavern_evil_wizard_save_slots_v1';
@@ -71,6 +77,8 @@ export function loadSaveSlot(id: string): GameState | null {
     if (!rec) return null;
     if (!rec.state.objectStates) rec.state.objectStates = {};
     if (!rec.state.equippedItemIds) rec.state.equippedItemIds = [];
+    migrateLegacyWardrobeState(rec.state);
+    migrateLegacyRugState(rec.state);
     return rec.state;
   } catch {
     return null;
@@ -358,15 +366,47 @@ function resolveObjectInScene(target: string, objectIds: string[]): string | nul
   return null;
 }
 
+/** Migrate string `objectStates.wardrobe` to multi-axis (door + contents). */
+function migrateLegacyWardrobeState(state: GameState) {
+  const raw = state.objectStates?.wardrobe;
+  if (typeof raw !== 'string') return;
+  if (raw === 'open') {
+    state.objectStates!.wardrobe = { door: 'open', contents: 'empty' };
+  } else {
+    const hasKey = state.inventory.includes('old_key');
+    state.objectStates!.wardrobe = {
+      door: 'closed',
+      contents: hasKey ? 'empty' : 'key',
+    };
+  }
+}
+
+/** Migrate string `objectStates.rug` to multi-axis (lay + contents). */
+function migrateLegacyRugState(state: GameState) {
+  const raw = state.objectStates?.rug;
+  if (typeof raw !== 'string') return;
+  const hasQuarter = state.inventory.includes('quarter');
+  if (raw === 'flipped') {
+    state.objectStates!.rug = { lay: 'flipped', contents: 'empty' };
+  } else {
+    state.objectStates!.rug = {
+      lay: 'flat',
+      contents: hasQuarter ? 'empty' : 'quarter',
+    };
+  }
+}
+
 export function loadGame(): GameState | null {
   const saved = localStorage.getItem(SAVE_KEY);
   if (saved) {
     try {
-      const parsed = JSON.parse(saved);
+      const parsed = JSON.parse(saved) as GameState;
       // Ensure objectStates exists for older saves
       if (!parsed.objectStates) parsed.objectStates = {};
       if (parsed.focusedObjectId === undefined) parsed.focusedObjectId = undefined;
       if (!parsed.equippedItemIds) parsed.equippedItemIds = [];
+      migrateLegacyWardrobeState(parsed);
+      migrateLegacyRugState(parsed);
       return parsed;
     } catch (e) {
       console.error('Failed to load game', e);
@@ -539,8 +579,8 @@ export function processCommand(state: GameState, input: string): GameState {
       const obj = OBJECTS[objId];
       if (obj) {
         newState.focusedObjectId = objId;
-        const st = newState.objectStates[objId] ?? obj.initialState;
-        const desc = obj.descriptions[st];
+        const axes = getObjectAxes(newState, objId, obj);
+        const desc = resolveObjectDescription(obj, axes);
         if (desc) {
           newState.history.push(replaceName(desc));
           return newState;
@@ -572,8 +612,8 @@ export function processCommand(state: GameState, input: string): GameState {
       const regex = new RegExp(`^${interaction.regex}$`, 'i');
       if (!regex.test(command)) continue;
 
-      const currentState = newState.objectStates[objId] ?? obj.initialState;
-      if (interaction.whenObjectState !== undefined && interaction.whenObjectState !== currentState) {
+      const currentAxes = getObjectAxes(newState, objId, obj);
+      if (!interactionWhenMatches(interaction, currentAxes, obj)) {
         continue;
       }
 
@@ -595,7 +635,7 @@ export function processCommand(state: GameState, input: string): GameState {
         /^look\s+at\s+/i.test(command) ||
         interaction.examineReuse === true;
       if (useStateDescription) {
-        const stateDesc = obj.descriptions[currentState];
+        const stateDesc = resolveObjectDescription(obj, currentAxes);
         if (stateDesc) {
           newState.history.push(replaceName(stateDesc));
           return newState;
@@ -658,18 +698,27 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
 
-  if (interaction.setState && objId) {
-    const obj = OBJECTS[objId];
-    const currentSt = state.objectStates[objId] ?? obj?.initialState ?? '';
-    if (currentSt === interaction.setState) {
+  const obj = objId ? OBJECTS[objId] : undefined;
+  const prevAxes = obj && objId ? getObjectAxes(state, objId, obj) : ({} as Record<string, string>);
+  const legacyKey = obj?.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY;
+
+  const patch: Partial<Record<string, string>> = { ...(interaction.setAxes ?? {}) };
+  if (interaction.setState !== undefined && objId && obj) {
+    patch[legacyKey] = interaction.setState;
+  }
+
+  if (objId && obj && Object.keys(patch).length > 0) {
+    const patchResolved = Object.fromEntries(
+      Object.entries(patch).filter((e): e is [string, string] => e[1] !== undefined),
+    ) as Record<string, string>;
+    const actuallyChanges = Object.keys(patchResolved).some((k) => (prevAxes[k] ?? '') !== patchResolved[k]);
+    if (!actuallyChanges) {
       const msg = interaction.redundantMessage ?? interaction.text ?? 'Nothing changes.';
       newState.history.push(replaceName(msg));
       return newState;
     }
-  }
-
-  if (interaction.setState && objId) {
-    newState.objectStates = { ...newState.objectStates, [objId]: interaction.setState };
+    const merged = { ...prevAxes, ...patchResolved };
+    newState.objectStates = { ...newState.objectStates, [objId]: merged };
   }
 
   if (interaction.getItem) {

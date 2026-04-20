@@ -32,6 +32,7 @@ import InfoModal, { InfoModalKind } from './components/InfoModal';
 import DevDebugModal from './components/DevDebugModal';
 import LoadGameModal from './components/LoadGameModal';
 import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/audioService';
+import { getObjectAxes, resolveObjectDescription } from './lib/objectState';
 
 const initialAudioPrefs = loadAudioPreferences();
 
@@ -47,8 +48,8 @@ function getSceneObjectRows(scene: Scene, state: GameState) {
   return (scene.objects ?? []).map((oid) => {
     const obj = OBJECTS[oid];
     const name = (obj?.name ?? oid).toUpperCase();
-    const st = state.objectStates[oid] ?? obj?.initialState ?? '';
-    const desc = (obj?.descriptions?.[st] ?? '').toString();
+    const axes = obj ? getObjectAxes(state, oid, obj) : {};
+    const desc = (obj ? resolveObjectDescription(obj, axes) : '') ?? '';
 
     // Lightweight icon mapping (fallback: Package)
     const iconById: Record<string, keyof typeof LucideIcons> = {
@@ -173,6 +174,18 @@ export default function App() {
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  /** Commands typed in the terminal (oldest → newest); used for Up/Down history. */
+  const commandHistoryRef = useRef<string[]>([]);
+  /** -1 = not navigating history; 0 = newest matching line, higher = older matches. */
+  const historyNavOffsetRef = useRef(-1);
+  const historyNavDraftRef = useRef<string | null>(null);
+  const promptInputRef = useRef<HTMLInputElement>(null);
+  const caretMeasureRef = useRef<HTMLSpanElement>(null);
+  const [caretPos, setCaretPos] = useState(0);
+  const [cursorPixelLeft, setCursorPixelLeft] = useState(0);
+  const [promptFocused, setPromptFocused] = useState(false);
+  /** Keyboard highlight row in the suggestion panel (-1 = none). */
+  const [suggestionHighlight, setSuggestionHighlight] = useState(-1);
 
   const scrollTerminalToEnd = useCallback(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -275,6 +288,16 @@ export default function App() {
     audioService.playSound('click');
     const newState = processCommand(state, commandToProcess);
     setState(newState);
+    if (!manualCommand) {
+      const trimmed = commandToProcess.trim();
+      const hist = commandHistoryRef.current;
+      if (trimmed && hist[hist.length - 1] !== trimmed) {
+        hist.push(trimmed);
+      }
+    }
+    historyNavOffsetRef.current = -1;
+    historyNavDraftRef.current = null;
+    setSuggestionHighlight(-1);
     setInputValue('');
     setSkipTypewriter(false);
 
@@ -284,22 +307,29 @@ export default function App() {
     setIsSfxMuted(audioService.getSfxMuted());
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        if (state.isGameOver) return;
-        const currentScene = SCENES[state.currentSceneId];
-        const suggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
-        const first = suggestions[0];
-        if (first) {
-          e.preventDefault();
-          setInputValue(first);
-        }
+  const syncCaretFromPrompt = useCallback(() => {
+    const el = promptInputRef.current;
+    if (el) setCaretPos(el.selectionStart ?? 0);
+  }, []);
+
+  useLayoutEffect(() => {
+    setCursorPixelLeft(caretMeasureRef.current?.offsetWidth ?? 0);
+  }, [inputValue, caretPos]);
+
+  const applyPromptSuggestion = useCallback((text: string) => {
+    setInputValue(text);
+    setSuggestionHighlight(-1);
+    historyNavOffsetRef.current = -1;
+    historyNavDraftRef.current = null;
+    requestAnimationFrame(() => {
+      const el = promptInputRef.current;
+      if (el) {
+        const len = text.length;
+        el.setSelectionRange(len, len);
+        setCaretPos(len);
       }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [inputValue, state]);
+    });
+  }, []);
 
   const startGame = () => {
     setState((prev) => ({ ...prev, namingPhase: true }));
@@ -514,6 +544,110 @@ export default function App() {
   const sceneObjectRows = getSceneObjectRows(currentScene, state);
   const commandSuggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
   const focusedGlowLabel = getFocusedGlowLabel(state);
+  const suggestionActiveIndex =
+    suggestionHighlight >= 0 && suggestionHighlight < commandSuggestions.length ? suggestionHighlight : -1;
+
+  const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (state.isGameOver) return;
+    const suggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+
+    if (suggestions.length > 0 && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const len = suggestions.length;
+      const goDown = e.key === 'ArrowDown';
+      setSuggestionHighlight((prev) => {
+        if (goDown) {
+          if (prev < 0) return 0;
+          return (prev + 1) % len;
+        }
+        if (prev < 0) return len - 1;
+        return (prev - 1 + len) % len;
+      });
+      return;
+    }
+
+    if (e.key === 'Tab' && suggestions.length > 0) {
+      e.preventDefault();
+      const idx =
+        suggestionHighlight >= 0 && suggestionHighlight < suggestions.length ? suggestionHighlight : 0;
+      const pick = suggestions[idx];
+      if (pick) applyPromptSuggestion(pick);
+      return;
+    }
+
+    if (e.key === 'Enter' && suggestions.length > 0 && suggestionHighlight >= 0) {
+      e.preventDefault();
+      const idx = Math.min(suggestionHighlight, suggestions.length - 1);
+      const pick = suggestions[idx];
+      if (pick) applyPromptSuggestion(pick);
+      return;
+    }
+
+    if (e.key === 'Escape' && suggestionHighlight >= 0) {
+      e.preventDefault();
+      setSuggestionHighlight(-1);
+      return;
+    }
+
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    const prefix = inputValue;
+    const matches: string[] = [];
+    for (let i = commandHistoryRef.current.length - 1; i >= 0; i--) {
+      const h = commandHistoryRef.current[i];
+      if (h.toLowerCase().startsWith(prefix.toLowerCase())) matches.push(h);
+    }
+    if (matches.length === 0) return;
+
+    e.preventDefault();
+
+    if (e.key === 'ArrowUp') {
+      if (historyNavOffsetRef.current < 0) {
+        historyNavDraftRef.current = inputValue;
+        historyNavOffsetRef.current = 0;
+      } else {
+        historyNavOffsetRef.current = Math.min(historyNavOffsetRef.current + 1, matches.length - 1);
+      }
+      const next = matches[historyNavOffsetRef.current];
+      setInputValue(next);
+      requestAnimationFrame(() => {
+        const el = promptInputRef.current;
+        if (el) {
+          const len = next.length;
+          el.setSelectionRange(len, len);
+          setCaretPos(len);
+        }
+      });
+      return;
+    }
+
+    if (historyNavOffsetRef.current < 0) return;
+    if (historyNavOffsetRef.current === 0) {
+      const draft = historyNavDraftRef.current ?? '';
+      historyNavOffsetRef.current = -1;
+      historyNavDraftRef.current = null;
+      setInputValue(draft);
+      requestAnimationFrame(() => {
+        const el = promptInputRef.current;
+        if (el) {
+          el.setSelectionRange(draft.length, draft.length);
+          setCaretPos(draft.length);
+        }
+      });
+      return;
+    }
+    historyNavOffsetRef.current--;
+    const next = matches[historyNavOffsetRef.current];
+    setInputValue(next);
+    requestAnimationFrame(() => {
+      const el = promptInputRef.current;
+      if (el) {
+        const len = next.length;
+        el.setSelectionRange(len, len);
+        setCaretPos(len);
+      }
+    });
+  };
 
   return (
     <>
@@ -751,31 +885,64 @@ export default function App() {
 
               <form onSubmit={handleCommand} className="relative flex items-center gap-4 border-l-4 border-[#35ebeb] bg-[#1b1b1b] p-4">
                 <span className="text-xl font-black tracking-widest text-[#35ebeb]">&gt;</span>
-                <div className="relative flex flex-1 items-center">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    className="w-full border-none bg-transparent font-mono text-base font-bold uppercase tracking-wider text-[#35ebeb] caret-[#35ebeb] placeholder:text-[#35ebeb]/30 focus:ring-0"
-                    placeholder={inputValue ? '' : 'ENTER COMMAND...'}
-                    disabled={state.isGameOver}
-                  />
+                <div className="relative min-w-0 flex-1">
+                  <div className="relative flex min-w-0 items-center">
+                    <span
+                      ref={caretMeasureRef}
+                      aria-hidden
+                      className="invisible pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 whitespace-pre font-mono text-base font-bold uppercase leading-none tracking-wider"
+                    >
+                      {inputValue.slice(0, caretPos)}
+                    </span>
+                    <input
+                      ref={promptInputRef}
+                      autoFocus
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={inputValue}
+                      onChange={(e) => {
+                        historyNavOffsetRef.current = -1;
+                        historyNavDraftRef.current = null;
+                        setSuggestionHighlight(-1);
+                        setInputValue(e.target.value);
+                        setCaretPos(e.target.selectionStart ?? 0);
+                      }}
+                      onKeyDown={handlePromptKeyDown}
+                      onKeyUp={syncCaretFromPrompt}
+                      onClick={syncCaretFromPrompt}
+                      onSelect={syncCaretFromPrompt}
+                      onFocus={() => setPromptFocused(true)}
+                      onBlur={() => setPromptFocused(false)}
+                      className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-[#35ebeb] caret-transparent placeholder:text-[#35ebeb]/30 focus:ring-0"
+                      placeholder={inputValue ? '' : 'ENTER COMMAND...'}
+                      disabled={state.isGameOver}
+                    />
+                    {promptFocused && !state.isGameOver && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute top-1/2 z-20 h-[1.15em] w-[0.55em] -translate-y-1/2 bg-[#35ebeb] cursor-blink"
+                        style={{ left: cursorPixelLeft }}
+                      />
+                    )}
+                  </div>
 
                   {commandSuggestions.length > 0 && !state.isGameOver && (
                     <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden border-2 border-[#35ebeb]/50 bg-[#131313] shadow-[0_0_30px_rgba(53,235,235,0.15)]">
-                      {commandSuggestions.map((s) => (
+                      {commandSuggestions.map((s, idx) => (
                         <button
                           key={s}
                           type="button"
                           onMouseEnter={hoverUi}
-                          onClick={() => {
-                            setInputValue(s);
-                          }}
-                          className="flex w-full items-center justify-between px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-[#35ebeb]/90 hover:bg-[#353535] hover:text-[#35ebeb]"
+                          onClick={() => applyPromptSuggestion(s)}
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest hover:bg-[#353535] hover:text-[#35ebeb] ${
+                            suggestionActiveIndex === idx ? 'bg-[#353535] text-[#35ebeb]' : 'text-[#35ebeb]/90'
+                          }`}
                         >
                           <span className="truncate">{s}</span>
-                          <span className="ml-3 text-[#e2e2e2]/40">TAB</span>
+                          <span className="ml-3 shrink-0 text-[#e2e2e2]/40">
+                            {suggestionActiveIndex === idx ? '↵ / TAB' : 'TAB'}
+                          </span>
                         </button>
                       ))}
                     </div>

@@ -15,6 +15,13 @@ export const ITEMS: Record<string, Item> = {
     useText: 'You insert the key into the lock. It turns with a satisfying click.',
     icon: 'Key'
   },
+  'quarter': {
+    id: 'quarter',
+    name: 'Quarter',
+    description: 'A quarter you found under the rug in your room.',
+    useText: 'You pick up the quarter. It feels like a small reward for your efforts.',
+    icon: 'Coins',
+  },
   'comic_book': {
     id: 'comic_book',
     name: 'Digital Comic Prototype',
@@ -75,9 +82,18 @@ export const OBJECTS: Record<string, GameObject> = {
     id: 'wardrobe',
     name: 'Wardrobe',
     initialState: 'closed',
+    /** Door open/closed and whether the brass key is still inside (empty = taken or gone). */
+    initialAxes: { door: 'closed', contents: 'key' },
+    legacyStateKey: 'door',
     descriptions: {
-      'closed': "It's a heavy oak wardrobe. It looks like it might contain something useful.",
-      'open': "It's an opened wardrobe. It holds your childhood clothes, but none of that appears to fit you anymore.",
+      'contents:key|door:closed':
+        "It's a heavy oak wardrobe. It looks like it might contain something useful.",
+      'contents:key|door:open':
+        "The wardrobe stands open. Your childhood clothes are still there—and the OLD BRASS KEY is on its hook until you take it.",
+      'contents:empty|door:open':
+        "It's an opened wardrobe. It holds your childhood clothes, but none of that appears to fit you anymore. The key is gone.",
+      'contents:empty|door:closed':
+        "The wardrobe is closed. Your clothes are inside; the brass key is no longer on the hook.",
     },
     interactions: [
       {
@@ -86,25 +102,49 @@ export const OBJECTS: Record<string, GameObject> = {
         text: "It appears to be the only piece of furniture in the room.",
       },
       {
-        id: 'wardrobe_open',
+        id: 'wardrobe_open_key',
         regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
+        whenAxes: { door: 'closed', contents: 'key' },
         text: "You open the wardrobe. Inside, you find a red hoodie that looks too small for you in your current condition. You also find an OLD BRASS KEY hanging on a hook.",
         getItem: 'old_key',
-        setState: 'open',
+        setAxes: { door: 'open', contents: 'empty' },
         playSound: 'wood_creak_open',
-        redundantMessage: 'The wardrobe is already open. There is nothing else of use to you in the wardrobe.',
+      },
+      {
+        id: 'wardrobe_open_empty',
+        regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
+        whenAxes: { door: 'closed', contents: 'empty' },
+        text: "You open the wardrobe. Inside, you find that same old red hoodie that doesn't fit you. There's an empty hook with a vague dust outline where a key used to hang—but no key is there. You must've already obtained it.",
+        setAxes: { door: 'open' },
+        playSound: 'wood_creak_open',
+      },
+      {
+        id: 'wardrobe_open_redundant',
+        regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
+        whenAxes: { door: 'open' },
+        setAxes: { door: 'open' },
+        redundantMessage:
+          'The wardrobe is already open. There is nothing else of use to you in the wardrobe.',
       },
       {
         id: 'wardrobe_close',
         regex: 'close( the)? wardrobe',
         text: "You close the wardrobe. It's now closed.",
-        setState: 'closed',
+        setAxes: { door: 'closed' },
         playSound: 'wood_creak_close',
         redundantMessage: "The wardrobe is closed. It can't be closed anymore. You've closed it the most it can be closed.",
       },
       {
         regex: 'rummage (in|through)( the)? wardrobe',
-        reuseInteractionId: 'wardrobe_open',
+        reuseInteractionId: 'wardrobe_open_key',
+      },
+      {
+        regex: 'rummage (in|through)( the)? wardrobe',
+        reuseInteractionId: 'wardrobe_open_empty',
+      },
+      {
+        regex: 'rummage (in|through)( the)? wardrobe',
+        reuseInteractionId: 'wardrobe_open_redundant',
       },
     ]
   },
@@ -112,33 +152,62 @@ export const OBJECTS: Record<string, GameObject> = {
     id: 'rug',
     name: 'Rug',
     initialState: 'flat',
+    /** Laid flat vs lifted, and whether the quarter is still under there. */
+    initialAxes: { lay: 'flat', contents: 'quarter' },
+    legacyStateKey: 'lay',
     descriptions: {
-      'flat': "A faded blue rug with a space shuttle pattern. It's slightly bunched up near the corner.",
-      'flipped': "The rug is flipped over where you lifted it."
+      'contents:quarter|lay:flat':
+        "A faded blue rug with a space shuttle pattern. It's slightly bunched up near the corner—like something small might be tucked underneath.",
+      'contents:quarter|lay:flipped':
+        "The rug is still rumpled where you lifted it. The quarter is gone, but you could smooth it down if you want it tidy.",
+      'contents:empty|lay:flat':
+        "A faded blue rug with a space shuttle pattern. It lies flat on the floor; you've already taken the only thing that was hiding under it.",
+      'contents:empty|lay:flipped':
+        "The rug is flipped over where you lifted it. Nothing's left under there but dust and a faint outline where a coin used to sit.",
     },
     interactions: [
       {
         regex: 'look( at)?( the)? rug',
-        reuseInteractionId: "examine"
+        reuseInteractionId: 'examine',
       },
       {
-        id: 'rug_under',
+        id: 'rug_under_quarter',
         regex: '(look|search|flip|lift)( under)?( the)? rug',
-        text: "You lift the corner of the rug. Just dust bunnies and a stray penny. Nothing useful.",
-        setState: 'flipped',
+        whenAxes: { contents: 'quarter' },
+        text: "You lift the corner of the rug. Along with a few dust bunnies you find a QUARTER. Don't spend it all in one place.",
+        setAxes: { lay: 'flipped', contents: 'empty' },
+        getItem: 'quarter',
+      },
+      {
+        id: 'rug_under_empty',
+        regex: '(look|search|flip|lift)( under)?( the)? rug',
+        whenAxes: { contents: 'empty' },
+        setAxes: { contents: 'empty' },
         redundantMessage: "You've already checked under the rug. There's nothing new.",
       },
       {
         regex: 'peek (under|beneath)( the)? rug',
-        reuseInteractionId: 'rug_under',
+        reuseInteractionId: 'rug_under_quarter',
       },
       {
+        regex: 'peek (under|beneath)( the)? rug',
+        reuseInteractionId: 'rug_under_empty',
+      },
+      {
+        id: 'rug_fix',
         regex: 'fix( the)? rug',
+        whenAxes: { lay: 'flipped' },
         text: "You returned the rug to its original position. It's now flat.",
-        setState: 'flat',
-        redundantMessage: "The rug doesn't need to be fixed.",
-      }
-    ]
+        setAxes: { lay: 'flat' },
+      },
+      {
+        id: 'rug_fix_redundant',
+        regex: 'fix( the)? rug',
+        whenAxes: { lay: 'flat' },
+        setAxes: { lay: 'flat' },
+        redundantMessage: "The rug doesn't need to be fixed. So nice and tidy!",
+      },
+    ],
   },
   'window': {
     id: 'window',
@@ -199,7 +268,7 @@ export const OBJECTS: Record<string, GameObject> = {
         autoComplete: false,
       },
       {
-        regex: '(get( back)? in|go back|lie down on)( ?to)? bed',
+        regex: '((get( back)?|lay|lie) in|go back|lie down on)( ?to)? bed',
         text: "You try to curl up in the tiny bed, but you've outgrown this life. You need to move forward.",
         setState: 'unmade'
       },

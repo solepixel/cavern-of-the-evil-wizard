@@ -1,6 +1,7 @@
 import { GameState } from '../types';
 import { SCENES, OBJECTS, ITEMS } from '../gameData';
 import { resolveObjectInteraction } from './gameEngine';
+import { formatObjectStateForDisplay, serializeObjectAxes } from './objectState';
 
 export type DebugObjectInteractions = {
   objectId: string;
@@ -55,7 +56,12 @@ export function buildGameplayDebugSnapshot(state: GameState): {
   const objectStatesLines =
     Object.keys(state.objectStates).length === 0
       ? ['(none)']
-      : Object.entries(state.objectStates).map(([oid, st]) => `${oid}: ${st}`);
+      : Object.entries(state.objectStates).map(([oid, raw]) => {
+          const obj = OBJECTS[oid];
+          if (!obj) return `${oid}: ${String(raw)}`;
+          if (typeof raw === 'string') return `${oid}: ${raw}`;
+          return `${oid}: ${serializeObjectAxes(raw as Record<string, string>)}`;
+        });
 
   const sceneExits = scene
     ? Object.entries(scene.exits)
@@ -75,7 +81,7 @@ export function buildGameplayDebugSnapshot(state: GameState): {
         objects.push({ objectId: oid, name: '?', state: '', lines: ['(missing from OBJECTS)'] });
         continue;
       }
-      const st = state.objectStates[oid] ?? obj.initialState;
+      const st = formatObjectStateForDisplay(state, oid, obj);
       const lines: string[] = [];
       for (const raw of obj.interactions) {
         let note = '';
@@ -87,6 +93,8 @@ export function buildGameplayDebugSnapshot(state: GameState): {
           resolved.text ? `text: ${resolved.text.slice(0, 60)}${resolved.text.length > 60 ? '…' : ''}` : '',
           resolved.getItem ? `getItem: ${resolved.getItem}` : '',
           resolved.setState ? `setState: ${resolved.setState}` : '',
+          resolved.setAxes ? `setAxes: ${JSON.stringify(resolved.setAxes)}` : '',
+          resolved.whenAxes ? `whenAxes: ${JSON.stringify(resolved.whenAxes)}` : '',
           resolved.nextScene ? `nextScene: ${resolved.nextScene}` : '',
         ]
           .filter(Boolean)

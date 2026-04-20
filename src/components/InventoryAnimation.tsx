@@ -9,8 +9,11 @@ interface InventoryAnimationProps {
 }
 
 export default function InventoryAnimation({ itemName, iconName, onComplete }: InventoryAnimationProps) {
-  // @ts-ignore
-  const Icon = iconName ? LucideIcons[iconName] : LucideIcons.Package;
+  const Resolved =
+    iconName && iconName in LucideIcons
+      ? (LucideIcons as Record<string, React.ComponentType<{ size?: number; className?: string }>>)[iconName]
+      : undefined;
+  const Icon = typeof Resolved === 'function' ? Resolved : LucideIcons.Package;
 
   return (
     <motion.div

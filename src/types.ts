@@ -71,9 +71,14 @@ export interface Interaction {
   requiresInventory?: ItemId[];
   /** If set, this interaction is only considered when the object is in this state (object the regex matched on). */
   whenObjectState?: string;
+  /** Partial axis match — every key must equal the object’s current axes (see `GameObject.initialAxes`). */
+  whenAxes?: Record<string, string>;
   damage?: number;
   isDeath?: boolean;
-  setState?: string; // Change the state of the object
+  /** Sets one axis (see `GameObject.legacyStateKey`, default `s`). Prefer `setAxes` for multiple axes. */
+  setState?: string;
+  /** Merge into object axis state (e.g. `{ door: 'open', contents: 'empty' }`). */
+  setAxes?: Partial<Record<string, string>>;
   /** Shown when setState matches the object’s current state (no-op). */
   redundantMessage?: string;
   /** When requirements are not met (inventory / implicit removeItem). */
@@ -88,8 +93,14 @@ export interface Interaction {
 export interface GameObject {
   id: ObjectId;
   name: string;
-  descriptions: Record<string, string>; // state -> description
+  /** Keys: legacy single-state id (`flat`), composite `serializeObjectAxes` (`contents:key|door:closed`), or sorted `a|b` form. */
+  descriptions: Record<string, string>;
+  /** Legacy single-axis default when `initialAxes` is omitted. */
   initialState: string;
+  /** Multi-axis starting state (e.g. door + contents). When set, overrides `initialState` for storage. */
+  initialAxes?: Record<string, string>;
+  /** Axis name used by legacy `setState` / `whenObjectState` (default `s`). */
+  legacyStateKey?: string;
   interactions: Interaction[];
 }
 
@@ -134,7 +145,8 @@ export interface GameState {
   playerName: string;
   currentSceneId: string;
   inventory: ItemId[];
-  objectStates: Record<ObjectId, string>; // Track current state of each object
+  /** Per-object state: legacy string (one axis) or axis map for multi-state objects. */
+  objectStates: Record<ObjectId, string | Record<string, string>>;
   hp: number;
   maxHp: number;
   flags: Record<string, boolean | string | number>;
