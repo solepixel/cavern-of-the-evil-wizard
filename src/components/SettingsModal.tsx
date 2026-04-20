@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Volume2, VolumeX, Volume1, Save, LogOut } from 'lucide-react';
+import { X, Volume2, VolumeX, Volume1, Save, LogOut, HelpCircle, Power, ScrollText } from 'lucide-react';
 import { audioService } from '../lib/audioService';
 
 interface SettingsModalProps {
@@ -18,6 +18,10 @@ interface SettingsModalProps {
   onToggleAmbientMute: () => void;
   isSfxMuted: boolean;
   onToggleSfxMute: () => void;
+  /** On narrow viewports the footer hides these — same actions appear here. */
+  onSystemReboot?: () => void;
+  onHelp?: () => void;
+  onDataLog?: () => void;
 }
 
 export default function SettingsModal({ 
@@ -34,14 +38,17 @@ export default function SettingsModal({
   isAmbientMuted,
   onToggleAmbientMute,
   isSfxMuted,
-  onToggleSfxMute
+  onToggleSfxMute,
+  onSystemReboot,
+  onHelp,
+  onDataLog,
 }: SettingsModalProps) {
   const hoverUi = () => audioService.playHoverThrottled();
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -54,7 +61,7 @@ export default function SettingsModal({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="w-full max-w-md bg-[#1b1b1b] border-4 border-[#35ebeb] p-8 relative z-10"
+            className="relative z-10 my-2 w-full max-h-[calc(100dvh-2rem)] max-w-md overflow-x-hidden overflow-y-auto border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
           >
             <div className="absolute -top-1 -left-1 w-4 h-4 bg-[#35ebeb]" />
             <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#35ebeb]" />
@@ -143,6 +150,56 @@ export default function SettingsModal({
                   </div>
                 </div>
               </div>
+
+              {(onSystemReboot || onHelp || onDataLog) && (
+                <div className="space-y-3 border-t border-[#353535] pt-6 md:hidden">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#35ebeb]/60">Footer shortcuts</p>
+                  <div className="flex flex-col gap-2">
+                    {onSystemReboot && (
+                      <button
+                        type="button"
+                        onMouseEnter={hoverUi}
+                        onClick={() => {
+                          onClose();
+                          onSystemReboot();
+                        }}
+                        className="flex w-full items-center justify-between border-2 border-[#35ebeb]/60 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb]/15"
+                      >
+                        <span>System reboot</span>
+                        <Power size={16} />
+                      </button>
+                    )}
+                    {onHelp && (
+                      <button
+                        type="button"
+                        onMouseEnter={hoverUi}
+                        onClick={() => {
+                          onClose();
+                          onHelp();
+                        }}
+                        className="flex w-full items-center justify-between border-2 border-[#35ebeb]/60 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb]/15"
+                      >
+                        <span>Help</span>
+                        <HelpCircle size={16} />
+                      </button>
+                    )}
+                    {onDataLog && (
+                      <button
+                        type="button"
+                        onMouseEnter={hoverUi}
+                        onClick={() => {
+                          onClose();
+                          onDataLog();
+                        }}
+                        className="flex w-full items-center justify-between border-2 border-[#ffaaf6]/50 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-[#ffaaf6] hover:bg-[#ffaaf6]/10"
+                      >
+                        <span>Data log</span>
+                        <ScrollText size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Game Actions */}
               <div className="grid grid-cols-1 gap-4 pt-4 border-t border-[#353535]">

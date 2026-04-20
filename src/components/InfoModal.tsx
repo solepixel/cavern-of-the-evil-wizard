@@ -37,7 +37,7 @@ export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalP
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -48,7 +48,7 @@ export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalP
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="relative z-10 w-full max-w-md border-4 border-[#35ebeb] bg-[#1b1b1b] p-8"
+        className="relative z-10 my-2 w-full max-h-[calc(100dvh-2rem)] max-w-md overflow-x-hidden overflow-y-auto border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
       >
         <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
         <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />

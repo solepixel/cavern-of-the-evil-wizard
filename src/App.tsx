@@ -5,7 +5,21 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
-import { Heart, Backpack, Map as MapIcon, Save, Settings as CogIcon, Play, AlertTriangle, Volume2, VolumeX, Volume1 } from 'lucide-react';
+import clsx from 'clsx';
+import {
+  Heart,
+  Backpack,
+  Map as MapIcon,
+  Save,
+  Settings as CogIcon,
+  Play,
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  Volume1,
+  Menu,
+  X,
+} from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { GameState, Scene } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
@@ -35,6 +49,21 @@ import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/
 import { getObjectAxes, resolveObjectDescription } from './lib/objectState';
 
 const initialAudioPrefs = loadAudioPreferences();
+
+/** Matches Tailwind `md:` breakpoint — layout tweaks for phones / small tablets. */
+const NARROW_MOBILE_MEDIA = '(max-width: 767px)';
+
+function useIsNarrowMobile() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_MOBILE_MEDIA);
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return narrow;
+}
 
 function getSceneInteractionLabels(scene: Scene): string[] {
   if (scene.interactionLabels?.length) return scene.interactionLabels;
@@ -173,6 +202,10 @@ export default function App() {
   const [sceneInteractionsVisible, setSceneInteractionsVisible] = useState(true);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
+  const isNarrowMobile = useIsNarrowMobile();
+  /** Fixed side drawers on small screens (game stays full-width until opened). */
+  const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
+  const [mobileRightOpen, setMobileRightOpen] = useState(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   /** Commands typed in the terminal (oldest → newest); used for Up/Down history. */
   const commandHistoryRef = useRef<string[]>([]);
@@ -220,6 +253,13 @@ export default function App() {
     }
   }, [state.pendingItem]);
 
+  /** Mobile: show inventory drawer when a pickup animation runs so the new item is visible in context. */
+  useEffect(() => {
+    if (!state.pendingItem || !isNarrowMobile || !state.uiVisible) return;
+    setMobileLeftOpen(false);
+    setMobileRightOpen(true);
+  }, [state.pendingItem, isNarrowMobile, state.uiVisible]);
+
   useEffect(() => {
     loadGame();
   }, []);
@@ -256,6 +296,18 @@ export default function App() {
       setPostCutsceneChromeKey((k) => k + 1);
     }
   }, [isCutscene]);
+
+  useEffect(() => {
+    if (!isNarrowMobile) {
+      setMobileLeftOpen(false);
+      setMobileRightOpen(false);
+    }
+  }, [isNarrowMobile]);
+
+  useEffect(() => {
+    setMobileLeftOpen(false);
+    setMobileRightOpen(false);
+  }, [postCutsceneChromeKey]);
 
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
@@ -305,6 +357,14 @@ export default function App() {
     setSfxVolume(audioService.getSfxVolume());
     setIsAmbientMuted(audioService.getAmbientMuted());
     setIsSfxMuted(audioService.getSfxMuted());
+
+    if (typeof window !== 'undefined' && window.matchMedia(NARROW_MOBILE_MEDIA).matches) {
+      queueMicrotask(() => {
+        promptInputRef.current?.blur();
+        setMobileLeftOpen(false);
+        setMobileRightOpen(false);
+      });
+    }
   };
 
   const syncCaretFromPrompt = useCallback(() => {
@@ -440,6 +500,41 @@ export default function App() {
     />
   );
 
+  const settingsModal = (
+    <SettingsModal
+      isOpen={isSettingsOpen}
+      onClose={() => setIsSettingsOpen(false)}
+      onSave={handleSaveProgress}
+      onReset={resetGame}
+      ambientVolume={ambientVolume}
+      onAmbientVolumeChange={handleAmbientVolumeChange}
+      sfxVolume={sfxVolume}
+      onSfxVolumeChange={handleSfxVolumeChange}
+      isMuted={isMuted}
+      onToggleMute={toggleMute}
+      isAmbientMuted={isAmbientMuted}
+      onToggleAmbientMute={toggleAmbientMute}
+      isSfxMuted={isSfxMuted}
+      onToggleSfxMute={toggleSfxMute}
+      onSystemReboot={() => {
+        setIsSettingsOpen(false);
+        setInfoModalKind('reboot');
+      }}
+      onHelp={() => {
+        setIsSettingsOpen(false);
+        setInfoModalKind('help');
+      }}
+      onDataLog={
+        isDevDebugUi
+          ? () => {
+              setIsSettingsOpen(false);
+              setInfoModalKind('log');
+            }
+          : undefined
+      }
+    />
+  );
+
   if (!state.gameStarted && !state.namingPhase) {
     return (
       <>
@@ -499,32 +594,44 @@ export default function App() {
             </div>
           </motion.div>
 
-          <footer className="fixed bottom-0 z-30 flex w-full flex-wrap items-center justify-between gap-y-2 border-t-4 border-[#ffffff] bg-[#131313] p-4 text-[10px] uppercase tracking-widest text-[#ffaaf6]">
-            <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 md:gap-8">
-              <div className="group flex items-center gap-2">
-                <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
-                  {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+          <footer className="fixed bottom-0 z-30 w-full border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-4 md:py-3">
+            <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between md:gap-y-2">
+              <div className="truncate text-center md:text-left">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
+              <div className="hidden flex-wrap items-center justify-center gap-x-6 gap-y-2 md:flex md:justify-end md:gap-8">
+                <div className="group flex items-center gap-2">
+                  <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+                    {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={ambientVolume}
+                    onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
+                    className="h-1 w-20 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] md:w-24 group-hover:bg-[#35ebeb]/30"
+                    aria-label="Volume"
+                  />
+                </div>
+                <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+                  SYSTEM_REBOOT
                 </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={ambientVolume}
-                  onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-                  className="h-1 w-20 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] md:w-24 group-hover:bg-[#35ebeb]/30"
-                  aria-label="Volume"
-                />
               </div>
-              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
-                SYSTEM_REBOOT
+              <button
+                type="button"
+                onMouseEnter={hoverUi}
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center justify-center gap-2 border-2 border-[#35ebeb] py-2.5 font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb]/10 md:hidden"
+              >
+                <CogIcon size={18} aria-hidden />
+                Settings &amp; audio
               </button>
             </div>
           </footer>
         </div>
         {infoModal}
         {loadModal}
+        {settingsModal}
       </>
     );
   }
@@ -533,8 +640,18 @@ export default function App() {
     return (
       <>
         <NamingScreen onComplete={completeNaming} onCancel={cancelNaming} />
+        <button
+          type="button"
+          onMouseEnter={hoverUi}
+          onClick={() => setIsSettingsOpen(true)}
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px)+0.5rem)] right-3 z-[70] flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#35ebeb] bg-[#1b1b1b] text-[#35ebeb] shadow-lg md:hidden"
+          aria-label="Settings and audio"
+        >
+          <CogIcon size={22} />
+        </button>
         {infoModal}
         {loadModal}
+        {settingsModal}
       </>
     );
   }
@@ -669,7 +786,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
@@ -678,8 +795,28 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.32 : 0, ease: [0.4, 0, 0.2, 1] }}
-                className="z-40 flex w-64 flex-col border-r-4 border-[#353535] bg-[#1b1b1b]"
+                className={clsx(
+                  'z-40 flex w-64 flex-col border-r-4 border-[#353535] bg-[#1b1b1b]',
+                  'md:relative md:h-auto md:max-h-none md:translate-x-0',
+                  'max-md:fixed max-md:left-0 max-md:top-0 max-md:z-[56] max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-[min(22rem,92vw)] max-md:overflow-y-auto max-md:shadow-[8px_0_40px_rgba(0,0,0,0.65)] max-md:transition-transform max-md:duration-300 max-md:ease-out',
+                  isNarrowMobile && !mobileLeftOpen && 'max-md:pointer-events-none max-md:-translate-x-full',
+                  isNarrowMobile && mobileLeftOpen && 'max-md:translate-x-0',
+                )}
               >
+                {isNarrowMobile && (
+                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 md:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Player menu</span>
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => setMobileLeftOpen(false)}
+                      className="rounded border border-[#353535] p-2 text-[#35ebeb] hover:bg-[#353535]"
+                      aria-label="Close player menu"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
                 <div className="border-b-4 border-[#353535] p-6">
                   <div className="mb-2 flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535]">
@@ -715,7 +852,15 @@ export default function App() {
                   <button
                     type="button"
                     onMouseEnter={hoverUi}
-                    onClick={() => handleCommand(undefined, 'view inventory')}
+                    onClick={() => {
+                      if (isNarrowMobile) {
+                        setMobileLeftOpen(false);
+                        setMobileRightOpen(true);
+                      } else {
+                        handleCommand(undefined, 'view inventory');
+                        setMobileLeftOpen(false);
+                      }
+                    }}
                     className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
                   >
                     <Backpack size={20} /> INVENTORY
@@ -724,7 +869,10 @@ export default function App() {
                     <button
                       type="button"
                       onMouseEnter={hoverUi}
-                      onClick={() => handleCommand(undefined, 'view map')}
+                      onClick={() => {
+                        handleCommand(undefined, 'view map');
+                        setMobileLeftOpen(false);
+                      }}
                       className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
                     >
                       <MapIcon size={20} /> MAP
@@ -736,7 +884,11 @@ export default function App() {
                   <button
                     type="button"
                     onMouseEnter={hoverUi}
-                    onClick={() => setIsSettingsOpen(true)}
+                    onClick={() => {
+                      setMobileLeftOpen(false);
+                      setMobileRightOpen(false);
+                      setIsSettingsOpen(true);
+                    }}
                     className="flex w-full items-center justify-center gap-2 border-2 border-[#35ebeb] py-3 text-xs font-black uppercase text-[#35ebeb] transition-all hover:bg-[#35ebeb] hover:text-[#002020]"
                   >
                     <CogIcon size={18} /> SETTINGS
@@ -746,8 +898,28 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <main className="flex flex-1 flex-col overflow-hidden bg-[#131313]">
-            <section className="group relative h-[50%] overflow-hidden border-b-4 border-[#353535] bg-black">
+          {state.uiVisible && isNarrowMobile && mobileLeftOpen && (
+            <button
+              type="button"
+              aria-label="Dismiss player menu"
+              className="fixed inset-0 z-[50] bg-black/60 md:hidden"
+              onClick={() => setMobileLeftOpen(false)}
+            />
+          )}
+
+          <main className="relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#131313]">
+            <section
+              className={clsx(
+                'group relative shrink-0 overflow-hidden border-b-4 border-[#353535] bg-black',
+                'md:h-[50%]',
+                isNarrowMobile
+                  ? clsx(
+                      'transition-[height] duration-200 ease-out',
+                      promptFocused ? 'h-[58%] min-h-[11rem]' : 'h-[42%] min-h-[9.5rem]',
+                    )
+                  : 'h-[50%]',
+              )}
+            >
               <AnimatePresence mode="wait">
                 <motion.div
                   key={state.currentSceneId}
@@ -835,10 +1007,13 @@ export default function App() {
                 delay: postCutsceneChromeKey === 0 ? 0 : 0.36,
                 ease: [0.4, 0, 0.2, 1],
               }}
-              className="flex flex-1 flex-col overflow-hidden p-6"
+              className={clsx(
+                'flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:p-6',
+                isNarrowMobile && promptFocused && 'max-h-[42vh] min-h-0',
+              )}
               onClick={() => setSkipTypewriter(true)}
             >
-              <div className="terminal-scroll mb-4 flex-1 space-y-4 overflow-y-auto pr-4 font-mono">
+              <div className="terminal-scroll mb-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2 font-mono md:mb-4 md:pr-4">
                 {state.history.map((line, i) => {
                   const isLast = i === state.history.length - 1;
                   if (line.startsWith('>')) {
@@ -883,9 +1058,22 @@ export default function App() {
                 <div ref={terminalEndRef} />
               </div>
 
-              <form onSubmit={handleCommand} className="relative flex items-center gap-4 border-l-4 border-[#35ebeb] bg-[#1b1b1b] p-4">
+              <form
+                onSubmit={handleCommand}
+                className="relative flex shrink-0 items-center gap-3 border-l-4 border-[#35ebeb] bg-[#1b1b1b] p-3 md:gap-4 md:p-4"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span className="text-xl font-black tracking-widest text-[#35ebeb]">&gt;</span>
-                <div className="relative min-w-0 flex-1">
+                <div
+                  className="relative min-w-0 flex-1"
+                  onPointerDown={(e) => {
+                    if (!isNarrowMobile || state.isGameOver) return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest('button')) return;
+                    if (t === promptInputRef.current) return;
+                    promptInputRef.current?.focus();
+                  }}
+                >
                   <div className="relative flex min-w-0 items-center">
                     <span
                       ref={caretMeasureRef}
@@ -896,7 +1084,7 @@ export default function App() {
                     </span>
                     <input
                       ref={promptInputRef}
-                      autoFocus
+                      autoFocus={!isNarrowMobile}
                       type="text"
                       autoComplete="off"
                       spellCheck={false}
@@ -957,6 +1145,15 @@ export default function App() {
             </motion.section>
           </main>
 
+          {state.uiVisible && isNarrowMobile && mobileRightOpen && (
+            <button
+              type="button"
+              aria-label="Dismiss inventory panel"
+              className="fixed inset-0 z-[50] bg-black/60 md:hidden"
+              onClick={() => setMobileRightOpen(false)}
+            />
+          )}
+
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
@@ -965,65 +1162,87 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.34 : 0, ease: [0.4, 0, 0.2, 1] }}
-                className="z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0"
+                className={clsx(
+                  'z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0',
+                  'md:relative md:h-auto md:max-h-none md:translate-x-0',
+                  'max-md:fixed max-md:right-0 max-md:top-0 max-md:z-[56] max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-[min(22rem,92vw)] max-md:overflow-y-auto max-md:shadow-[-8px_0_40px_rgba(0,0,0,0.65)] max-md:transition-transform max-md:duration-300 max-md:ease-out',
+                  isNarrowMobile && !mobileRightOpen && 'max-md:pointer-events-none max-md:translate-x-full',
+                  isNarrowMobile && mobileRightOpen && 'max-md:translate-x-0',
+                )}
               >
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
-                  <h3 className="mb-4 flex flex-shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
-                    <Backpack size={18} /> INVENTORY
-                  </h3>
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-                    {state.inventory.length > 0 ? (
-                      state.inventory.map((id) => {
-                        // @ts-expect-error dynamic icon
-                        const Icon = ITEMS[id].icon ? LucideIcons[ITEMS[id].icon] : LucideIcons.Package;
-                        return (
+                {isNarrowMobile && (
+                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 md:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Inventory &amp; scene</span>
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => setMobileRightOpen(false)}
+                      className="rounded border border-[#353535] p-2 text-[#35ebeb] hover:bg-[#353535]"
+                      aria-label="Close inventory panel"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div className="flex min-h-0 flex-1 flex-col border-[#353535] p-4 max-md:border-b md:p-6">
+                    <h3 className="mb-3 flex shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6] md:mb-4">
+                      <Backpack size={18} /> INVENTORY
+                    </h3>
+                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
+                      {state.inventory.length > 0 ? (
+                        state.inventory.map((id) => {
+                          // @ts-expect-error dynamic icon
+                          const Icon = ITEMS[id].icon ? LucideIcons[ITEMS[id].icon] : LucideIcons.Package;
+                          return (
+                            <div
+                              key={id}
+                              className="group flex items-start gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 transition-all hover:bg-[#353535]"
+                            >
+                              <div className="mt-1 text-[#35ebeb]">
+                                <Icon size={16} />
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
+                                <div className="mt-1 text-[10px] text-[#e2e2e2]/60">{ITEMS[id].description}</div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
+                          Inventory is empty...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {sceneInteractionsVisible && (
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:border-t md:border-[#353535] md:p-6">
+                      <h3 className="mb-3 flex shrink-0 items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70 md:mb-4">
+                        SCENE OBJECTS
+                      </h3>
+                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
+                        {sceneObjectRows.map(({ id, name, desc, Icon }) => (
                           <div
                             key={id}
-                            className="group flex items-start gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 transition-all hover:bg-[#353535]"
+                            className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
                           >
-                            <div className="mt-1 text-[#35ebeb]">
+                            <div className="mt-1 text-[#e2e2e2]/60">
                               <Icon size={16} />
                             </div>
                             <div>
-                              <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
-                              <div className="mt-1 text-[10px] text-[#e2e2e2]/60">{ITEMS[id].description}</div>
+                              <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
+                              <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
                             </div>
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
-                        Inventory is empty...
+                        ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {sceneInteractionsVisible && (
-                  <div className="border-t border-[#353535] p-6">
-                    <h3 className="mb-4 flex items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70">
-                      SCENE OBJECTS
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2">
-                      {sceneObjectRows.map(({ id, name, desc, Icon }) => (
-                        <div
-                          key={id}
-                          className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
-                        >
-                          <div className="mt-1 text-[#e2e2e2]/60">
-                            <Icon size={16} />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
-                            <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-auto flex-shrink-0 border-t border-[#353535] p-6 pt-4">
+                <div className="mt-auto hidden shrink-0 border-t border-[#353535] p-6 pt-4 md:block">
                   <div className="border-b-4 border-[#ffaaf6] bg-[#131313] p-4">
                     <div className="mb-1 text-[10px] uppercase tracking-widest text-[#ffaaf6]">System Status</div>
                     <div className="text-xs font-bold text-[#ffffff]">KERNEL: READY</div>
@@ -1033,54 +1252,82 @@ export default function App() {
               </motion.aside>
             )}
           </AnimatePresence>
+
         </div>
         </LayoutGroup>
 
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          onSave={handleSaveProgress}
-          onReset={resetGame}
-          ambientVolume={ambientVolume}
-          onAmbientVolumeChange={handleAmbientVolumeChange}
-          sfxVolume={sfxVolume}
-          onSfxVolumeChange={handleSfxVolumeChange}
-          isMuted={isMuted}
-          onToggleMute={toggleMute}
-          isAmbientMuted={isAmbientMuted}
-          onToggleAmbientMute={toggleAmbientMute}
-          isSfxMuted={isSfxMuted}
-          onToggleSfxMute={toggleSfxMute}
-        />
+        {settingsModal}
 
-        <footer className="z-50 flex items-center justify-between border-t-4 border-[#ffffff] bg-[#131313] px-8 py-2 text-[10px] uppercase tracking-widest text-[#ffaaf6]">
-          <div>(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-          <div className="flex items-center gap-8">
-            <div className="group flex items-center gap-2">
-              <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]">
-                {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={ambientVolume}
-                onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-                className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30"
-              />
-            </div>
-            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
-              SYSTEM_REBOOT
-            </button>
-            {isDevDebugUi && (
-              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
-                DATA_LOG
-              </button>
+        <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
+          <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="truncate text-center text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
+            {isNarrowMobile && (
+              <div className="flex w-full items-center justify-between gap-3 border-t border-[#ffffff]/15 pt-2 md:hidden">
+                <div className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-start">
+                  {state.uiVisible ? (
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => {
+                        setMobileRightOpen(false);
+                        setMobileLeftOpen((o) => !o);
+                      }}
+                      className={clsx(
+                        'flex h-11 w-11 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]',
+                        mobileLeftOpen && 'bg-[#35ebeb]/20 text-[#ffffff]',
+                      )}
+                      aria-expanded={mobileLeftOpen}
+                      aria-label={mobileLeftOpen ? 'Close player menu' : 'Open player menu (status, map, inventory)'}
+                    >
+                      <Menu size={24} strokeWidth={2.5} />
+                    </button>
+                  ) : (
+                    <span className="block h-11 w-11" aria-hidden />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onMouseEnter={hoverUi}
+                  onClick={() => {
+                    setMobileLeftOpen(false);
+                    setMobileRightOpen(false);
+                    setIsSettingsOpen(true);
+                  }}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]"
+                  aria-label="Open settings"
+                >
+                  <CogIcon size={24} strokeWidth={2} />
+                </button>
+              </div>
             )}
-            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
-              HELP
-            </button>
+            <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
+              <div className="group flex items-center gap-2">
+                <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+                  {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={ambientVolume}
+                  onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
+                  className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30 md:w-20"
+                  aria-label="Volume"
+                />
+              </div>
+              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+                SYSTEM_REBOOT
+              </button>
+              {isDevDebugUi && (
+                <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
+                  DATA_LOG
+                </button>
+              )}
+              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
+                HELP
+              </button>
+            </div>
           </div>
         </footer>
       </div>

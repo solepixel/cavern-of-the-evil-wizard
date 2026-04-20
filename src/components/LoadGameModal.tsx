@@ -65,7 +65,7 @@ export default function LoadGameModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[210] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -79,21 +79,21 @@ export default function LoadGameModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 12 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative z-10 w-full max-w-lg border-4 border-[#35ebeb] bg-[#1b1b1b] p-8"
+            className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
           >
             <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
             <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
             <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-[#35ebeb]" />
             <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#35ebeb]" />
 
-            <div className="mb-6 flex items-start justify-between gap-4">
+            <div className="mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">
               <h2 className="text-xl font-black uppercase tracking-widest text-[#ffaaf6]">LOAD GAME</h2>
               <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
                 <X size={24} />
               </button>
             </div>
 
-            <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-y-contain pr-1">
               {slots.length === 0 ? (
                 <div className="border-l-4 border-[#353535] bg-[#131313] p-4 text-sm text-[#e2e2e2]/70">
                   No save slots found yet.
@@ -192,7 +192,7 @@ export default function LoadGameModal({
               type="button"
               onMouseEnter={hoverUi}
               onClick={onClose}
-              className="mt-6 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
+              className="mt-4 w-full shrink-0 border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020] sm:mt-6"
             >
               CANCEL
             </button>

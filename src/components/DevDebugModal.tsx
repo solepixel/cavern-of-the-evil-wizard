@@ -52,7 +52,7 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
   const audio = audioService.getDebugAudioSnapshot();
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -63,7 +63,7 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
       <motion.div
         initial={{ scale: 0.96, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="relative z-10 flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col border-4 border-[#35ebeb] bg-[#131313]"
+        className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden border-4 border-[#35ebeb] bg-[#131313] sm:my-0"
       >
         <div className="absolute -left-1 -top-1 h-3 w-3 bg-[#35ebeb]" />
         <div className="absolute -right-1 -top-1 h-3 w-3 bg-[#35ebeb]" />
@@ -80,7 +80,7 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-4">
           <Section title="Audio">
             <Lines
               items={[
