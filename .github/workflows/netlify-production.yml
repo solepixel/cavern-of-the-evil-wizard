@@ -1,0 +1,41 @@
+# Production deploy on every push to `main`.
+#
+# Setup (GitHub repo → Settings → Secrets and variables → Actions):
+#   NETLIFY_AUTH_TOKEN — https://app.netlify.com/user/applications#personal-access-tokens
+#   NETLIFY_SITE_ID    — Site configuration → Site details → Site ID
+#
+# If the site is already connected to this repo in Netlify ("Continuous deployment"),
+# you normally do NOT need this workflow (Netlify will build on push). Use either
+# Netlify Git integration or this workflow to avoid duplicate production deploys.
+
+name: Deploy production (Netlify)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Deploy to Netlify
+        run: npx netlify-cli deploy --prod --dir=dist --message "Deploy ${{ github.sha }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
