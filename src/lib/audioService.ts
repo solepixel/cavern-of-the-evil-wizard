@@ -3,7 +3,7 @@ import type { GameSfxSpec } from '../types';
 const AUDIO_PREFS_KEY = 'cavern_evaw_audio_v2';
 
 const AMBIENT_GLOBAL_KEY = '__cavernEvilWizardAmbientAudio__' as const;
-export const DEFAULT_AMBIENT_SRC = '/assets/audio/Cavern_of_the_Evil_Wizard_(Intro)-v2.mp3';
+export const DEFAULT_AMBIENT_SRC = '/assets/audio/Cavern_of_the_Evil_Wizard_(Intro)-v3.mp3';
 
 /** One shared looping element so HMR / duplicate service instances cannot stack BGM. */
 function getSharedAmbientElement(): HTMLAudioElement | null {
