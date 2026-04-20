@@ -1,0 +1,14 @@
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Single-page app: serve index.html for client routes (safe for this Vite app).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
