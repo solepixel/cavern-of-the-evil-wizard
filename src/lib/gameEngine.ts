@@ -14,6 +14,7 @@ import { getSceneAreaDisplayLabel } from './sceneAreaLabel';
 import { buildDicebearAvatarUrl, loadDicebearProfile } from './dicebearAvatar';
 import { loadLocalAvatar } from './localAvatar';
 import { getHelpText } from './helpText';
+import { transitionIntoScene } from './engine/sceneTransition';
 import {
   DEFAULT_LEGACY_STATE_KEY,
   getObjectAxes,
@@ -41,6 +42,17 @@ export interface SaveSlotSummary {
 
 interface SaveSlotRecord extends SaveSlotSummary {
   state: GameState;
+}
+
+export type GameEngineEffect =
+  | { type: 'history.append'; lines: string[] }
+  | { type: 'scene.changed'; fromSceneId: string; toSceneId: string }
+  | { type: 'inventory.changed'; added: ItemId[]; removed: ItemId[] }
+  | { type: 'gameover.changed'; isGameOver: boolean };
+
+export interface TransitionResult {
+  state: GameState;
+  effects: GameEngineEffect[];
 }
 
 /** Prefix for terminal lines that should render as dim “system” messages in the UI */
@@ -224,10 +236,6 @@ function parseExamineTarget(command: string): string | null {
   return m[1].trim().toLowerCase().replace(/^the\s+/i, '');
 }
 
-function sceneOnLoadFlag(sceneId: string): string {
-  return `__sceneOnLoad__:${sceneId}`;
-}
-
 function normalizePromptKey(s: string): string {
   return s
     .trim()
@@ -397,70 +405,32 @@ function applySceneArrival(
   implicitCarry = 0,
 ): GameState {
   const beforeInventory = [...state.inventory];
-  const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
-  const scene = SCENES[sceneId];
-  if (!scene) {
-    if (!preamble) return state;
-    return { ...state, history: [...state.history, replaceName(preamble)] };
+  const transition = transitionIntoScene(
+    {
+      scenes: SCENES,
+      items: ITEMS,
+      scorePickupItem: SCORE_PICKUP_ITEM,
+      scoreFirstEnterScene: SCORE_FIRST_ENTER_SCENE,
+      runSceneEnterHook,
+    },
+    {
+      state,
+      sceneId,
+      preamble,
+      fromSceneId,
+      implicitCarry,
+      includeSceneHooks: true,
+    },
+  );
+
+  for (const soundId of transition.soundsToPlay) {
+    audioService.playSound(soundId);
   }
 
-  const key = sceneOnLoadFlag(sceneId);
-  const onLoad = scene.onLoad;
-  const firstOnLoad = Boolean(onLoad && !state.flags[key]);
-
-  let next: GameState = { ...state, flags: { ...state.flags } };
-  // Focus is per-scene; leaving a room clears it until the player focuses something here.
-  if (fromSceneId !== undefined && fromSceneId !== sceneId) {
-    next = { ...next, focusedObjectId: undefined };
-  }
-  const parts: string[] = [];
-  if (preamble) parts.push(replaceName(preamble));
-
-  let implicitScore = implicitCarry;
-
-  if (firstOnLoad && onLoad) {
-    next.flags[key] = true;
-    if (onLoad.text) parts.push(replaceName(onLoad.text));
-    if (onLoad.sound) audioService.playSound(onLoad.sound);
-    if (onLoad.getItem && !next.inventory.includes(onLoad.getItem)) {
-      next.inventory = [...next.inventory, onLoad.getItem];
-      next.uiVisible = true;
-      next.pendingItem = onLoad.getItem;
-      if (onLoad.getItem === 'map') next.hasMap = true;
-      implicitScore += SCORE_PICKUP_ITEM;
-    }
-    if (onLoad.removeItem && next.inventory.includes(onLoad.removeItem)) {
-      next.inventory = next.inventory.filter((id) => id !== onLoad.removeItem!);
-    }
-    if (onLoad.setFlags) {
-      for (const [fk, fv] of Object.entries(onLoad.setFlags)) {
-        next.flags[fk] = fv as boolean | string | number;
-      }
-    }
-  } else {
-    const desc = scene.description ? replaceName(scene.description) : '';
-    if (desc) parts.push(desc);
-  }
-
-  if (parts.length) {
-    next.history = [...next.history, parts.join('\n\n')];
-  }
-
-  if (scene.isCheckpoint && !next.isGameOver) {
+  let next = transition.state;
+  if (transition.shouldCheckpoint) {
     next.lastCheckpoint = { ...next, history: [] };
     saveCheckpoint(next);
-  }
-
-  next = runSceneEnterHook(next, sceneId, fromSceneId);
-
-  const progressKey = `__sceneProgressScore__:${sceneId}`;
-  if (fromSceneId && fromSceneId !== sceneId && !next.flags[progressKey]) {
-    next.flags = { ...next.flags, [progressKey]: true };
-    implicitScore += SCORE_FIRST_ENTER_SCENE;
-  }
-
-  if (implicitScore > 0) {
-    next = { ...next, score: (next.score ?? 0) + implicitScore };
   }
 
   return queueNewInventoryAnimations(beforeInventory, next);
@@ -1089,6 +1059,43 @@ export function processCommand(state: GameState, input: string): GameState {
 
   newState.history.push("Command not recognized.");
   return finish(newState);
+}
+
+function diffInventory(before: ItemId[], after: ItemId[]): { added: ItemId[]; removed: ItemId[] } {
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  return {
+    added: after.filter((id) => !beforeSet.has(id)),
+    removed: before.filter((id) => !afterSet.has(id)),
+  };
+}
+
+/**
+ * Transitional engine API: emits typed effects so UI and adapters can consume
+ * state changes without parsing raw game state diffs.
+ */
+export function transitionCommand(state: GameState, input: string): TransitionResult {
+  const next = processCommand(state, input);
+  const effects: GameEngineEffect[] = [];
+  const appended = next.history.slice(state.history.length);
+  if (appended.length > 0) {
+    effects.push({ type: 'history.append', lines: appended });
+  }
+  if (state.currentSceneId !== next.currentSceneId) {
+    effects.push({
+      type: 'scene.changed',
+      fromSceneId: state.currentSceneId,
+      toSceneId: next.currentSceneId,
+    });
+  }
+  const inv = diffInventory(state.inventory ?? [], next.inventory ?? []);
+  if (inv.added.length > 0 || inv.removed.length > 0) {
+    effects.push({ type: 'inventory.changed', ...inv });
+  }
+  if (state.isGameOver !== next.isGameOver) {
+    effects.push({ type: 'gameover.changed', isGameOver: next.isGameOver });
+  }
+  return { state: next, effects };
 }
 
 /** Same outcome as typing `equip <item name>` (e.g. from the Equipment dialog). */

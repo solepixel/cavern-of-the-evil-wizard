@@ -7,8 +7,10 @@ import {
   REUSE_INTERACTION_EXAMINE,
 } from './types';
 import { audioService } from './lib/audioService';
-import { SCORE_FIRST_ENTER_SCENE, SCORE_PICKUP_ITEM } from './lib/gameScoring';
 import { FATAL_PREFIX } from './lib/gameEngine';
+import { SCORE_FIRST_ENTER_SCENE, SCORE_PICKUP_ITEM } from './lib/gameScoring';
+import { transitionIntoScene } from './lib/engine/sceneTransition';
+import { validateContentRegistryOrThrow } from './lib/contentSchema';
 
 export const ITEMS: Record<string, Item> = {
   'old_key': {
@@ -1159,71 +1161,26 @@ function simpleSceneEntry(
   preamble?: string,
   fromSceneId?: string,
 ): GameState {
-  const scene = SCENES[sceneId];
-  if (!scene) return { ...state, currentSceneId: sceneId };
-  const key = `__sceneOnLoad__:${sceneId}`;
-  const onLoad = scene.onLoad;
-  const first = Boolean(onLoad && !state.flags[key]);
-  let flags = { ...state.flags };
-  let inventory = [...state.inventory];
-  let uiVisible = state.uiVisible;
-  let pendingItem = state.pendingItem;
-  let pendingItemQueue = [...(state.pendingItemQueue ?? [])];
-  let hasMap = state.hasMap;
-  let score = state.score ?? 0;
-  let implicitScore = 0;
-  const rn = (t: string) => t.replace(/{{name}}/g, state.playerName);
-  const parts: string[] = [];
-  if (preamble) parts.push(rn(preamble));
-  if (first && onLoad) {
-    flags[key] = true;
-    if (onLoad.text) parts.push(rn(onLoad.text));
-    if (onLoad.sound) audioService.playSound(onLoad.sound);
-    if (onLoad.getItem && !inventory.includes(onLoad.getItem)) {
-      inventory = [...inventory, onLoad.getItem];
-      uiVisible = true;
-      pendingItem = onLoad.getItem;
-      const t = ((ITEMS[onLoad.getItem]?.itemType ?? (ITEMS[onLoad.getItem]?.equippable ? 'gear' : 'misc')) === 'gear' ||
-        (ITEMS[onLoad.getItem]?.itemType ?? (ITEMS[onLoad.getItem]?.equippable ? 'gear' : 'misc')) === 'weapon')
-        ? 'equipment'
-        : 'inventory';
-      pendingItemQueue = [...pendingItemQueue, { id: onLoad.getItem, target: t }];
-      if (onLoad.getItem === 'map') hasMap = true;
-      implicitScore += SCORE_PICKUP_ITEM;
-    }
-    if (onLoad.removeItem && inventory.includes(onLoad.removeItem)) {
-      inventory = inventory.filter((id) => id !== onLoad.removeItem);
-    }
-    if (onLoad.setFlags) {
-      flags = { ...flags, ...onLoad.setFlags };
-    }
-  } else if (scene.description) {
-    parts.push(rn(scene.description));
+  const transitioned = transitionIntoScene(
+    {
+      scenes: SCENES,
+      items: ITEMS,
+      scorePickupItem: SCORE_PICKUP_ITEM,
+      scoreFirstEnterScene: SCORE_FIRST_ENTER_SCENE,
+      runSceneEnterHook,
+    },
+    {
+      state,
+      sceneId,
+      preamble,
+      fromSceneId,
+      includeSceneHooks: true,
+    },
+  );
+  for (const soundId of transitioned.soundsToPlay) {
+    audioService.playSound(soundId);
   }
-
-  const progressKey = `__sceneProgressScore__:${sceneId}`;
-  if (fromSceneId && fromSceneId !== sceneId && !flags[progressKey]) {
-    flags = { ...flags, [progressKey]: true };
-    implicitScore += SCORE_FIRST_ENTER_SCENE;
-  }
-
-  if (implicitScore > 0) {
-    score += implicitScore;
-  }
-
-  return {
-    ...state,
-    currentSceneId: sceneId,
-    ...(state.currentSceneId !== sceneId ? { focusedObjectId: undefined } : {}),
-    flags,
-    inventory,
-    uiVisible,
-    pendingItem,
-    pendingItemQueue,
-    hasMap,
-    score,
-    history: parts.length ? [...state.history, parts.join('\n\n')] : state.history,
-  };
+  return transitioned.state;
 }
 
 export const INITIAL_STATE: GameState = {
@@ -1246,6 +1203,13 @@ export const INITIAL_STATE: GameState = {
   equippedItemIds: [],
   score: 0,
 };
+
+validateContentRegistryOrThrow({
+  items: ITEMS,
+  objects: OBJECTS,
+  scenes: SCENES,
+  initialState: INITIAL_STATE,
+});
 
 /**
  * Scene transition hook (called from `applySceneArrival` after one-shot onLoad / description).

@@ -28,9 +28,7 @@ import {
   Footprints,
   Sword,
   Boxes,
-  ChevronDown,
 } from 'lucide-react';
-import * as LucideIcons from 'lucide-react';
 import { GameState, Scene } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
 import {
@@ -45,26 +43,28 @@ import {
   resumeFromCheckpointWithFeedback,
   saveCheckpoint,
   saveGame,
-  FATAL_PREFIX,
-  SYS_PREFIX,
   sysLine,
   applyDeadlineExpired,
 } from './lib/gameEngine';
 import NamingScreen from './components/NamingScreen';
 import Cutscene from './components/Cutscene';
-import Typewriter from './components/Typewriter';
 import InventoryAnimation from './components/InventoryAnimation';
 import SettingsModal from './components/SettingsModal';
 import InfoModal, { InfoModalKind } from './components/InfoModal';
 import DevDebugModal from './components/DevDebugModal';
 import LoadGameModal from './components/LoadGameModal';
 import EquippedStatusModal from './components/EquippedStatusModal.tsx';
+import GameShell from './components/layout/GameShell';
+import ModalLayer from './components/layout/ModalLayer';
+import TerminalView from './components/terminal/TerminalView';
+import { CollapsiblePanel, PanelRowButton } from './components/panels/PanelSystem';
 import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/audioService';
 import { getSceneAreaDisplayLabel } from './lib/sceneAreaLabel';
 import AvatarPickerModal from './components/AvatarPickerModal';
 import { StoredLocalAvatar, clearLocalAvatar, imageToPixelAvatarDataUrl, loadLocalAvatar, saveLocalAvatar } from './lib/localAvatar';
 import { DicebearProfile, buildDicebearAvatarUrl, loadDicebearProfile, saveDicebearProfile } from './lib/dicebearAvatar';
 import { getHelpText } from './lib/helpText';
+import { resolveIconComponent } from './lib/iconRegistry';
 
 const initialAudioPrefs = loadAudioPreferences();
 
@@ -97,7 +97,7 @@ function getSceneObjectRows(scene: Scene) {
     const name = (obj?.name ?? oid).toUpperCase();
 
     // Lightweight icon mapping (fallback: Package)
-    const iconById: Record<string, keyof typeof LucideIcons> = {
+    const iconById: Record<string, string> = {
       bed: 'BedDouble',
       wardrobe: 'Archive',
       rug: 'Square',
@@ -112,10 +112,8 @@ function getSceneObjectRows(scene: Scene) {
       parents_exit_door: 'DoorClosed',
       evil_wizard: 'Skull',
     };
-    const iconKey = iconById[oid];
-    const Icon = ((iconKey ? (LucideIcons as any)[iconKey] : LucideIcons.Package) ?? LucideIcons.Package) as React.ComponentType<{
-      size?: number;
-    }>;
+    const iconKey = iconById[oid] ?? 'Package';
+    const Icon = resolveIconComponent(iconKey) as React.ComponentType<{ size?: number }>;
 
     return { id: oid, name, Icon };
   });
@@ -830,7 +828,7 @@ export default function App() {
   );
 
   const mainFooter = (
-    <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
+    <footer className="z-50 border-t-4 border-white bg-bg-base px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-accent-magenta md:px-8 md:py-2">
       <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center justify-between gap-3 md:block">
           <div className="truncate text-left text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
@@ -843,7 +841,7 @@ export default function App() {
                 setMobileRightOpen(false);
                 setIsSettingsOpen(true);
               }}
-              className="shrink-0 rounded-full p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] lg:hidden"
+              className="shrink-0 rounded-full p-2 text-accent-cyan hover:bg-accent-cyan/10 hover:text-white active:scale-[0.98] lg:hidden"
               aria-label="Open settings"
             >
               <CogIcon size={18} strokeWidth={2} />
@@ -852,7 +850,7 @@ export default function App() {
         </div>
         <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
           <div className="group flex items-center gap-2">
-            <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+            <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-accent-cyan" aria-label="Toggle mute">
               {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
             </button>
             <input
@@ -862,19 +860,19 @@ export default function App() {
               step="0.01"
               value={ambientVolume}
               onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-              className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30 md:w-20"
+              className="h-1 w-16 cursor-pointer appearance-none bg-bg-muted accent-accent-cyan group-hover:bg-accent-cyan/30 md:w-20"
               aria-label="Volume"
             />
           </div>
-          <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+          <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('reboot')}>
             SYSTEM_REBOOT
           </button>
           {isDevDebugUi && (
-            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
+            <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('log')}>
               DATA_LOG
             </button>
           )}
-          <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
+          <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('help')}>
             HELP
           </button>
         </div>
@@ -885,14 +883,14 @@ export default function App() {
   if (!state.gameStarted && !state.namingPhase) {
     return (
       <>
-        <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#131313] p-4">
+        <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-bg-base p-4">
           <div className="pointer-events-none fixed inset-0 opacity-30 crt-scanlines" />
 
           <button
             type="button"
             onMouseEnter={hoverUi}
             onClick={() => setIsSettingsOpen(true)}
-            className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-40 flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[#35ebeb] hover:bg-[#35ebeb]/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#35ebeb] focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313]"
+            className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-40 flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-accent-cyan hover:bg-accent-cyan/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
             aria-label="Open settings"
           >
             <CogIcon size={18} />
@@ -906,27 +904,27 @@ export default function App() {
             <h1 className="mb-4 text-6xl font-black leading-none tracking-tighter text-[#ffffff] md:text-9xl">
               CAVERN
               <br />
-              <span className="mt-2 block text-4xl tracking-widest text-[#ffaaf6] md:text-6xl">OF THE EVIL WIZARD</span>
+              <span className="mt-2 block text-4xl tracking-widest text-accent-magenta md:text-6xl">OF THE EVIL WIZARD</span>
             </h1>
 
             <div className="mt-4 mb-12 flex items-center justify-center gap-4">
-              <div className="h-1 w-24 bg-[#35ebeb]" />
-              <span className="text-sm font-bold uppercase tracking-[0.4em] text-[#35ebeb]">SENTIENT TERMINAL v1.9.88</span>
-              <div className="h-1 w-24 bg-[#35ebeb]" />
+              <div className="h-1 w-24 bg-accent-cyan" />
+              <span className="text-sm font-bold uppercase tracking-[0.4em] text-accent-cyan">SENTIENT TERMINAL v1.9.88</span>
+              <div className="h-1 w-24 bg-accent-cyan" />
             </div>
 
-            <div className="relative mx-auto max-w-md border-4 border-[#35ebeb] bg-[#1b1b1b] p-2">
-              <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
-              <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
-              <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-[#35ebeb]" />
-              <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#35ebeb]" />
+            <div className="relative mx-auto max-w-md border-4 border-accent-cyan bg-bg-panel p-2">
+              <div className="absolute -left-1 -top-1 h-4 w-4 bg-accent-cyan" />
+              <div className="absolute -right-1 -top-1 h-4 w-4 bg-accent-cyan" />
+              <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-accent-cyan" />
+              <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-accent-cyan" />
 
-              <div className="flex flex-col gap-4 border-2 border-[#35ebeb]/30 bg-[#131313] p-8">
+              <div className="flex flex-col gap-4 border-2 border-accent-cyan/30 bg-bg-base p-8">
                 <button
                   type="button"
                   onMouseEnter={hoverUi}
                   onClick={startGame}
-                  className="flex w-full items-center justify-between bg-[#ffffff] px-6 py-4 font-bold uppercase tracking-widest text-[#002020] transition-all hover:bg-[#35ebeb]"
+                  className="flex w-full items-center justify-between bg-white px-6 py-4 font-bold uppercase tracking-widest text-text-inverse transition-all hover:bg-accent-cyan"
                 >
                   <span>START GAME</span>
                   <Play className="shrink-0" size={20} />
@@ -941,7 +939,7 @@ export default function App() {
                       setSaveSlots(slots);
                       setIsLoadModalOpen(true);
                     }}
-                    className="flex w-full items-center justify-between border-2 border-[#ffaaf6] px-6 py-4 font-bold uppercase tracking-widest text-[#ffaaf6] transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
+                    className="flex w-full items-center justify-between border-2 border-accent-magenta px-6 py-4 font-bold uppercase tracking-widest text-accent-magenta transition-all hover:bg-accent-magenta hover:text-bg-base"
                   >
                     <span>LOAD GAME</span>
                     <Save className="shrink-0" size={20} />
@@ -969,7 +967,7 @@ export default function App() {
           type="button"
           onMouseEnter={hoverUi}
           onClick={() => setIsSettingsOpen(true)}
-          className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-[70] flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[#35ebeb] hover:bg-[#35ebeb]/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#35ebeb] focus-visible:ring-offset-2 focus-visible:ring-offset-[#131313] md:hidden"
+          className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top,0px)+0.5rem)] z-70 flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-accent-cyan hover:bg-accent-cyan/10 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base md:hidden"
           aria-label="Settings and audio"
         >
           <CogIcon size={22} />
@@ -1095,11 +1093,10 @@ export default function App() {
 
   return (
     <>
-      <div className="flex h-screen flex-col overflow-hidden bg-[#131313] font-sans text-[#e2e2e2]">
-        <div className="pointer-events-none fixed inset-0 opacity-20 crt-scanlines" />
+      <GameShell>
 
         {isNarrowMobile && (
-          <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-[#ffffff]/15 bg-[#131313]/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] backdrop-blur lg:hidden">
+          <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-white/15 bg-bg-base/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] backdrop-blur lg:hidden">
             {state.uiVisible ? (
               <button
                 type="button"
@@ -1109,8 +1106,8 @@ export default function App() {
                   setMobileLeftOpen((o) => !o);
                 }}
                 className={clsx(
-                  'flex h-11 w-11 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]',
-                  mobileLeftOpen && 'bg-[#35ebeb]/20 text-[#ffffff]',
+                  'flex h-11 w-11 items-center justify-center rounded-md p-2 text-accent-cyan hover:bg-accent-cyan/10 hover:text-white active:scale-[0.98]',
+                  mobileLeftOpen && 'bg-accent-cyan/20 text-white',
                 )}
                 aria-expanded={mobileLeftOpen}
                 aria-label={mobileLeftOpen ? 'Close player menu' : 'Open player menu (status, map, inventory)'}
@@ -1121,7 +1118,7 @@ export default function App() {
               <span className="block h-11 w-11" aria-hidden />
             )}
 
-            <div className="text-center text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Sentient Terminal</div>
+            <div className="text-center text-[10px] font-black uppercase tracking-widest text-accent-magenta">Sentient Terminal</div>
 
             <button
               type="button"
@@ -1131,7 +1128,7 @@ export default function App() {
                 setMobileLeftOpen(false);
                 setMobileRightOpen(true);
               }}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-accent-cyan hover:bg-accent-cyan/10 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Open inventory and scene panel"
             >
               <PackageOpen size={24} strokeWidth={2} />
@@ -1180,28 +1177,28 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.32 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
-                  'z-40 flex w-64 flex-col border-r-4 border-[#353535] bg-[#1b1b1b]',
+                  'z-40 flex w-64 flex-col border-r-4 border-border-base bg-bg-panel',
                   'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',
-                  'max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:z-[56] max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
+                  'max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:z-56 max-lg:h-dvh max-lg:max-h-dvh max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
                   isNarrowMobile && !mobileLeftOpen && 'max-lg:pointer-events-none max-lg:-translate-x-full',
                   isNarrowMobile && mobileLeftOpen && 'max-lg:translate-x-0',
                 )}
               >
                 {isNarrowMobile && (
-                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 lg:hidden">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Player menu</span>
+                  <div className="flex items-center justify-between border-b border-border-base px-3 py-2 lg:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-accent-magenta">Player menu</span>
                     <button
                       type="button"
                       onMouseEnter={hoverUi}
                       onClick={() => setMobileLeftOpen(false)}
-                      className="rounded border border-[#353535] p-2 text-[#35ebeb] hover:bg-[#353535]"
+                      className="rounded border border-border-base p-2 text-accent-cyan hover:bg-bg-muted"
                       aria-label="Close player menu"
                     >
                       <X size={18} />
                     </button>
                   </div>
                 )}
-                <div className="border-b-4 border-[#353535] p-6">
+                <div className="border-b-4 border-border-base p-6">
                   <div className="mb-2 flex items-center gap-3">
                     <button
                       type="button"
@@ -1211,23 +1208,23 @@ export default function App() {
                         setDraftAvatar(localAvatar);
                         setIsAvatarModalOpen(true);
                       }}
-                      className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535] hover:border-[#35ebeb] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-accent-magenta bg-bg-muted hover:border-accent-cyan disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Change avatar"
                     >
                       <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
                     </button>
                     <div>
-                      <div className="text-lg font-bold uppercase tracking-tighter text-[#ffaaf6]">{state.playerName}</div>
-                      <div className="text-[10px] font-black text-[#35ebeb]">
+                      <div className="text-lg font-bold uppercase tracking-tighter text-accent-magenta">{state.playerName}</div>
+                      <div className="text-[10px] font-black text-accent-cyan">
                         HP: {state.hp}/{state.maxHp} · SCORE: {state.score ?? 0}
                         {deadlineSecondsLeft != null ? (
-                          <span className="ml-2 text-[#ffaaf6]">· TIME: {deadlineSecondsLeft}s</span>
+                          <span className="ml-2 text-accent-magenta">· TIME: {deadlineSecondsLeft}s</span>
                         ) : null}
                       </div>
                     </div>
                   </div>
-                  <div className="mt-2 h-2 w-full bg-[#131313]">
-                    <div className="h-full bg-[#35ebeb]" style={{ width: `${(state.hp / state.maxHp) * 100}%` }} />
+                  <div className="mt-2 h-2 w-full bg-bg-base">
+                    <div className="h-full bg-accent-cyan" style={{ width: `${(state.hp / state.maxHp) * 100}%` }} />
                   </div>
                   {showEquippedHud && (
                     <div
@@ -1311,9 +1308,9 @@ export default function App() {
                             setIsEquippedModalOpen(true);
                           }}
                           className={clsx(
-                            'flex h-9 items-center justify-center border bg-[#131313] text-[#35ebeb] hover:bg-[#353535]/40',
-                            state.isGameOver && 'cursor-not-allowed opacity-45 hover:bg-[#131313]',
-                            alert ? 'border-[#35ebeb]' : 'border-[#353535]',
+                            'flex h-9 items-center justify-center border bg-bg-base text-accent-cyan hover:bg-bg-muted/40',
+                            state.isGameOver && 'cursor-not-allowed opacity-45 hover:bg-bg-base',
+                            alert ? 'border-accent-cyan' : 'border-border-base',
                           )}
                           aria-label={`View equipped (${label})`}
                         >
@@ -1334,7 +1331,7 @@ export default function App() {
                       'flex w-full items-center gap-4 p-4 text-sm font-black uppercase tracking-tighter',
                       state.isGameOver
                         ? 'cursor-not-allowed bg-[#ffffff]/75 text-[#4d4d4d]'
-                        : 'bg-[#ffffff] text-[#002020]',
+                        : 'bg-white text-text-inverse',
                     )}
                   >
                     <Heart size={20} /> STATUS
@@ -1356,8 +1353,8 @@ export default function App() {
                     className={clsx(
                       'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
                       state.isGameOver
-                        ? 'cursor-not-allowed text-[#35ebeb]/35'
-                        : 'text-[#35ebeb] opacity-70 hover:bg-[#ffaaf6] hover:text-[#131313]',
+                        ? 'cursor-not-allowed text-accent-cyan/35'
+                        : 'text-accent-cyan opacity-70 hover:bg-accent-magenta hover:text-bg-base',
                     )}
                   >
                     <Backpack size={20} /> INVENTORY
@@ -1375,8 +1372,8 @@ export default function App() {
                       className={clsx(
                         'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
                         state.isGameOver
-                          ? 'cursor-not-allowed text-[#35ebeb]/35'
-                          : 'text-[#35ebeb] opacity-70 hover:bg-[#ffaaf6] hover:text-[#131313]',
+                          ? 'cursor-not-allowed text-accent-cyan/35'
+                          : 'text-accent-cyan opacity-70 hover:bg-accent-magenta hover:text-bg-base',
                       )}
                     >
                       <MapIcon size={20} /> MAP
@@ -1393,7 +1390,7 @@ export default function App() {
                       setMobileRightOpen(false);
                       setIsSettingsOpen(true);
                     }}
-                    className="flex w-full items-center justify-center gap-2 border-2 border-[#35ebeb] py-3 text-xs font-black uppercase text-[#35ebeb] transition-all hover:bg-[#35ebeb] hover:text-[#002020]"
+                    className="flex w-full items-center justify-center gap-2 border-2 border-accent-cyan py-3 text-xs font-black uppercase text-accent-cyan transition-all hover:bg-accent-cyan hover:text-text-inverse"
                   >
                     <CogIcon size={18} /> SETTINGS
                   </button>
@@ -1406,17 +1403,17 @@ export default function App() {
             <button
               type="button"
               aria-label="Dismiss player menu"
-              className="fixed inset-0 z-[50] bg-black/60 md:hidden"
+              className="fixed inset-0 z-50 bg-black/60 md:hidden"
               onClick={() => setMobileLeftOpen(false)}
             />
           )}
 
-          <main className="relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#131313]">
+          <main className="relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-bg-base">
             <section
               className={clsx(
-                'group relative shrink-0 overflow-hidden border-b-4 border-[#353535] bg-black',
+                'group relative shrink-0 overflow-hidden border-b-4 border-border-base bg-black',
                 'md:h-[50%]',
-                isNarrowMobile ? 'h-[42%] min-h-[9.5rem]' : 'h-[50%]',
+                isNarrowMobile ? 'h-[42%] min-h-38' : 'h-[50%]',
               )}
             >
               <AnimatePresence mode="wait">
@@ -1445,7 +1442,7 @@ export default function App() {
                       </motion.div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center opacity-40">
-                        <div className="text-center font-mono text-[#35ebeb]">
+                        <div className="text-center font-mono text-accent-cyan">
                           <div className="mb-4 text-4xl">[ VISUAL FEED ]</div>
                           <div className="text-xl uppercase tracking-widest">
                             {currentScene.title.replace('{{name}}', state.playerName)}
@@ -1457,13 +1454,13 @@ export default function App() {
                 </motion.div>
               </AnimatePresence>
 
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent opacity-20" />
+              <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-transparent via-white/5 to-transparent opacity-20" />
               <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]" />
 
               {focusedGlowLabel && (
                 <>
                   <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_0_3px_rgba(53,235,235,0.25),inset_0_0_45px_rgba(53,235,235,0.18)]" />
-                  <div className="pointer-events-none absolute left-4 top-4 border-l-4 border-[#ffaaf6] bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#ffaaf6]">
+                  <div className="pointer-events-none absolute left-4 top-4 border-l-4 border-accent-magenta bg-bg-panel px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-accent-magenta">
                     FOCUS: {focusedGlowLabel}
                   </div>
                 </>
@@ -1471,15 +1468,15 @@ export default function App() {
 
               <div
                 className={clsx(
-                  'absolute right-4 top-4 border-l-4 bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase',
-                  state.isGameOver ? 'border-red-500 text-red-400' : 'border-[#35ebeb] text-[#35ebeb]',
+                  'absolute right-4 top-4 border-l-4 bg-bg-panel px-3 py-1 text-[10px] font-bold uppercase',
+                  state.isGameOver ? 'border-red-500 text-red-400' : 'border-accent-cyan text-accent-cyan',
                 )}
               >
                 {state.isGameOver ? 'GAME OVER' : `AREA: ${getSceneAreaDisplayLabel(state, state.currentSceneId)}`}
               </div>
 
               {state.isGameOver && (
-                <div className="pointer-events-auto absolute inset-0 z-[80] flex flex-col items-center justify-center bg-red-900/50">
+                <div className="pointer-events-auto absolute inset-0 z-80 flex flex-col items-center justify-center bg-red-900/50">
                   <AlertTriangle className="mb-4 animate-pulse text-white" size={64} />
                   <h2 className="mb-8 text-6xl font-black tracking-widest text-white">GAME OVER</h2>
                   <button
@@ -1494,7 +1491,7 @@ export default function App() {
                         setState({ ...INITIAL_STATE, playerName: state.playerName });
                       }
                     }}
-                    className="bg-white px-8 py-4 font-black uppercase tracking-widest text-red-900 transition-all hover:bg-[#35ebeb]"
+                    className="bg-white px-8 py-4 font-black uppercase tracking-widest text-red-900 transition-all hover:bg-accent-cyan"
                   >
                     {state.lastCheckpoint ? 'RELOAD LAST CHECKPOINT' : 'START OVER'}
                   </button>
@@ -1520,63 +1517,26 @@ export default function App() {
               <div
                 className={clsx(
                   'flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding,margin] duration-200',
-                  awaitingPromptResponse && 'ml-2 border-l-2 border-[#35ebeb]/35 pl-4 md:ml-3 md:pl-5',
+                  awaitingPromptResponse && 'ml-2 border-l-2 border-accent-cyan/35 pl-4 md:ml-3 md:pl-5',
                 )}
               >
-              <div className="terminal-scroll mb-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2 font-mono md:mb-4 md:pr-4">
-                {state.history.map((line, i) => {
-                  const isLast = i === state.history.length - 1;
-                  if (line.startsWith('>')) {
-                    return (
-                      <div key={i} className="font-bold text-[#35ebeb]">
-                        {line}
-                      </div>
-                    );
-                  }
-                  if (line.startsWith(SYS_PREFIX)) {
-                    return (
-                      <div key={i} className="text-sm text-[#a8a8a8]">
-                        {line.slice(SYS_PREFIX.length)}
-                      </div>
-                    );
-                  }
-                  if (line.startsWith(FATAL_PREFIX)) {
-                    const deathText = line.slice(FATAL_PREFIX.length);
-                    return (
-                      <div key={i} className="font-black uppercase tracking-widest text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.45)]">
-                        <Typewriter
-                          text={deathText}
-                          disableInlineHighlights
-                          skip={skipTypewriter || !isLast}
-                          onComplete={() => handleTypewriterComplete(i)}
-                          onContentChange={scrollTerminalToEnd}
-                        />
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={i} className="opacity-90 text-[#e2e2e2]">
-                      <Typewriter
-                        text={line}
-                        skip={skipTypewriter || !isLast}
-                        onComplete={() => handleTypewriterComplete(i)}
-                        onContentChange={scrollTerminalToEnd}
-                      />
-                    </div>
-                  );
-                })}
-                <div ref={terminalEndRef} />
-              </div>
+              <TerminalView
+                lines={state.history}
+                skipTypewriter={skipTypewriter}
+                onTypewriterComplete={handleTypewriterComplete}
+                onContentChange={scrollTerminalToEnd}
+                terminalEndRef={terminalEndRef}
+              />
 
               <form
                 onSubmit={handleCommand}
                 className={clsx(
-                  'relative flex shrink-0 items-center gap-3 border-l-4 bg-[#1b1b1b] p-3 md:gap-4 md:p-4',
-                  awaitingPromptResponse ? 'border-[#ffaaf6]/60' : 'border-[#35ebeb]',
+                  'relative flex shrink-0 items-center gap-3 border-l-4 bg-bg-panel p-3 md:gap-4 md:p-4',
+                  awaitingPromptResponse ? 'border-accent-magenta/60' : 'border-accent-cyan',
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
-                <span className="text-xl font-black tracking-widest text-[#35ebeb]">&gt;</span>
+                <span className="text-xl font-black tracking-widest text-accent-cyan">&gt;</span>
                 <div
                   className="relative min-w-0 flex-1"
                   onPointerDown={(e) => {
@@ -1602,7 +1562,7 @@ export default function App() {
                         setInputValue(e.target.value);
                       }}
                       onKeyDown={handlePromptKeyDown}
-                      className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-[#35ebeb] caret-[#35ebeb] placeholder:text-[#35ebeb]/30 focus:ring-0"
+                      className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-accent-cyan caret-accent-cyan placeholder:text-accent-cyan/30 focus:ring-0"
                       placeholder={
                         inputValue ? '' : awaitingPromptResponse ? 'ENTER RESPONSE...' : 'ENTER COMMAND...'
                       }
@@ -1611,19 +1571,19 @@ export default function App() {
                   </div>
 
                   {commandSuggestions.length > 0 && !state.isGameOver && (
-                    <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden border-2 border-[#35ebeb]/50 bg-[#131313] shadow-[0_0_30px_rgba(53,235,235,0.15)]">
+                    <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden border-2 border-accent-cyan/50 bg-bg-base shadow-[0_0_30px_rgba(53,235,235,0.15)]">
                       {commandSuggestions.map((s, idx) => (
                         <button
                           key={s}
                           type="button"
                           onMouseEnter={hoverUi}
                           onClick={() => applyPromptSuggestion(s)}
-                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest hover:bg-[#353535] hover:text-[#35ebeb] ${
-                            suggestionActiveIndex === idx ? 'bg-[#353535] text-[#35ebeb]' : 'text-[#35ebeb]/90'
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest hover:bg-bg-muted hover:text-accent-cyan ${
+                            suggestionActiveIndex === idx ? 'bg-bg-muted text-accent-cyan' : 'text-accent-cyan/90'
                           }`}
                         >
                           <span className="truncate">{s}</span>
-                          <span className="ml-3 shrink-0 text-[#e2e2e2]/40">
+                          <span className="ml-3 shrink-0 text-text-primary/40">
                             {suggestionActiveIndex === idx ? '↵ / TAB' : 'TAB'}
                           </span>
                         </button>
@@ -1635,14 +1595,14 @@ export default function App() {
                   <button
                     type="submit"
                     onMouseEnter={hoverUi}
-                    className="shrink-0 rounded border-2 border-[#35ebeb] bg-[#131313] p-2 text-[#35ebeb] active:scale-[0.99] lg:hidden"
+                    className="shrink-0 rounded border-2 border-accent-cyan bg-bg-base p-2 text-accent-cyan active:scale-[0.99] lg:hidden"
                     aria-label={awaitingPromptResponse ? 'Submit response' : 'Submit command'}
                   >
                     <CornerDownLeft size={18} strokeWidth={2.5} />
                   </button>
                 )}
                 {!state.uiVisible && (
-                  <div className="hidden animate-pulse text-[10px] uppercase tracking-widest text-[#35ebeb]/50 md:block">
+                  <div className="hidden animate-pulse text-[10px] uppercase tracking-widest text-accent-cyan/50 md:block">
                     Try: &quot;look&quot;, &quot;open wardrobe&quot;, &quot;take key&quot;
                   </div>
                 )}
@@ -1655,7 +1615,7 @@ export default function App() {
             <button
               type="button"
               aria-label="Dismiss inventory panel"
-              className="fixed inset-0 z-[50] bg-black/60 lg:hidden"
+              className="fixed inset-0 z-50 bg-black/60 lg:hidden"
               onClick={() => setMobileRightOpen(false)}
             />
           )}
@@ -1669,21 +1629,21 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.34 : 0, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
-                  'z-40 flex min-h-0 w-80 flex-col border-l-4 border-[#353535] bg-[#1b1b1b] p-0',
+                  'z-40 flex min-h-0 w-80 flex-col border-l-4 border-border-base bg-bg-panel p-0',
                   'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',
-                  'max-lg:fixed max-lg:right-0 max-lg:top-0 max-lg:z-[56] max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[-8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
+                  'max-lg:fixed max-lg:right-0 max-lg:top-0 max-lg:z-56 max-lg:h-dvh max-lg:max-h-dvh max-lg:w-[min(22rem,92vw)] max-lg:overflow-y-auto max-lg:shadow-[-8px_0_40px_rgba(0,0,0,0.65)] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out',
                   isNarrowMobile && !mobileRightOpen && 'max-lg:pointer-events-none max-lg:translate-x-full',
                   isNarrowMobile && mobileRightOpen && 'max-lg:translate-x-0',
                 )}
               >
                 {isNarrowMobile && (
-                  <div className="flex items-center justify-between border-b border-[#353535] px-3 py-2 lg:hidden">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#ffaaf6]">Inventory &amp; scene</span>
+                  <div className="flex items-center justify-between border-b border-border-base px-3 py-2 lg:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-accent-magenta">Inventory &amp; scene</span>
                     <button
                       type="button"
                       onMouseEnter={hoverUi}
                       onClick={() => setMobileRightOpen(false)}
-                      className="rounded border border-[#353535] p-2 text-[#35ebeb] hover:bg-[#353535]"
+                      className="rounded border border-border-base p-2 text-accent-cyan hover:bg-bg-muted"
                       aria-label="Close inventory panel"
                     >
                       <X size={18} />
@@ -1693,141 +1653,101 @@ export default function App() {
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   <div
                     className={clsx(
-                      'flex min-h-0 flex-col border-[#353535] p-4 md:p-6',
+                      'flex min-h-0 flex-col border-border-base p-4 md:p-6',
                       sceneInteractionsVisible && 'max-md:border-b',
                       inventoryPanelExpanded ? 'flex-1' : 'flex-none',
                     )}
                   >
-                    <button
-                      type="button"
-                      onMouseEnter={hoverUi}
-                      onClick={() => setInventoryPanelExpanded((v) => !v)}
-                      className={clsx(
-                        'flex w-full items-center justify-between gap-3',
-                        inventoryPanelExpanded ? 'mb-3 md:mb-4' : 'mb-0',
-                      )}
-                      aria-expanded={inventoryPanelExpanded}
+                    <CollapsiblePanel
+                      title={
+                        <>
+                          <Backpack size={18} /> INVENTORY
+                        </>
+                      }
+                      expanded={inventoryPanelExpanded}
+                      onToggle={() => setInventoryPanelExpanded((v) => !v)}
                     >
-                      <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
-                        <Backpack size={18} /> INVENTORY
-                      </span>
-                      <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
-                        <ChevronDown size={16} className={clsx('transition-transform', !inventoryPanelExpanded && '-rotate-90')} />
-                      </span>
-                    </button>
-                    {inventoryPanelExpanded && (
-                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                        {state.inventory.filter((id) => {
-                          const it = ITEMS[id];
-                          const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
-                          return t === 'misc';
-                        }).length > 0 ? (
-                          <AnimatePresence initial={false}>
-                            {state.inventory
-                              .filter((id) => {
-                                const it = ITEMS[id];
-                                const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
-                                return t === 'misc';
-                              })
-                              .map((id) => {
-                                const iconKey = ITEMS[id].icon as keyof typeof LucideIcons | undefined;
-                                const Icon =
-                                  (iconKey && (LucideIcons as any)[iconKey]
-                                    ? ((LucideIcons as any)[iconKey] as React.ComponentType<{ size?: number }>)
-                                    : (LucideIcons.Package as React.ComponentType<{ size?: number }>));
-                                return (
-                                  <motion.button
-                                    layout
-                                    initial={{ opacity: 0, y: 4 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -3, transition: { duration: 0.18, ease: [0.4, 0, 0.2, 1] } }}
-                                    transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                                    type="button"
-                                    key={id}
-                                    onMouseEnter={hoverUi}
+                      {state.inventory.filter((id) => {
+                        const it = ITEMS[id];
+                        const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
+                        return t === 'misc';
+                      }).length > 0 ? (
+                        <AnimatePresence initial={false}>
+                          {state.inventory
+                            .filter((id) => {
+                              const it = ITEMS[id];
+                              const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
+                              return t === 'misc';
+                            })
+                            .map((id) => {
+                              const Icon = resolveIconComponent(ITEMS[id].icon) as React.ComponentType<{ size?: number }>;
+                              return (
+                                <motion.div
+                                  layout
+                                  initial={{ opacity: 0, y: 4 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -3, transition: { duration: 0.18, ease: [0.4, 0, 0.2, 1] } }}
+                                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                                  key={id}
+                                  onMouseEnter={hoverUi}
+                                >
+                                  <PanelRowButton
+                                    variant="inventory"
+                                    icon={<Icon size={16} />}
+                                    label={ITEMS[id].name}
                                     disabled={state.isGameOver}
                                     onClick={() => {
                                       if (state.isGameOver) return;
                                       handleCommand(undefined, `examine ${ITEMS[id].name}`);
                                     }}
-                                    className={clsx(
-                                      'group flex w-full items-center gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 text-left transition-all',
-                                      state.isGameOver ? 'cursor-not-allowed opacity-45' : 'hover:bg-[#353535]',
-                                    )}
-                                  >
-                                    <div className="text-[#35ebeb]">
-                                      <Icon size={16} />
-                                    </div>
-                                    <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
-                                  </motion.button>
-                                );
-                              })}
-                          </AnimatePresence>
-                        ) : (
-                          <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
-                            Inventory is empty...
-                          </div>
-                        )}
-                      </div>
-                    )}
+                                  />
+                                </motion.div>
+                              );
+                            })}
+                        </AnimatePresence>
+                      ) : (
+                        <div className="text-[10px] italic uppercase tracking-widest text-text-primary/40">Inventory is empty...</div>
+                      )}
+                    </CollapsiblePanel>
                   </div>
 
                   {sceneInteractionsVisible && (
                     <div
                       className={clsx(
-                        'flex min-h-0 flex-col overflow-hidden p-4 md:border-t md:border-[#353535] md:p-6',
+                        'flex min-h-0 flex-col overflow-hidden p-4 md:border-t md:border-border-base md:p-6',
                         sceneObjectsPanelExpanded ? 'flex-1' : 'flex-none',
                       )}
                     >
-                      <button
-                        type="button"
-                        onMouseEnter={hoverUi}
-                        onClick={() => setSceneObjectsPanelExpanded((v) => !v)}
-                        className={clsx(
-                          'flex w-full items-center justify-between gap-3',
-                          sceneObjectsPanelExpanded ? 'mb-3 md:mb-4' : 'mb-0',
-                        )}
-                        aria-expanded={sceneObjectsPanelExpanded}
+                      <CollapsiblePanel
+                        title={
+                          <>
+                            <Boxes size={18} /> SCENE OBJECTS
+                          </>
+                        }
+                        expanded={sceneObjectsPanelExpanded}
+                        onToggle={() => setSceneObjectsPanelExpanded((v) => !v)}
                       >
-                        <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
-                          <Boxes size={18} /> SCENE OBJECTS
-                        </span>
-                        <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
-                          <ChevronDown size={16} className={clsx('transition-transform', !sceneObjectsPanelExpanded && '-rotate-90')} />
-                        </span>
-                      </button>
-                      {sceneObjectsPanelExpanded && (
-                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                          {sceneObjectRows.map(({ id, name, Icon }) => (
-                            <button
-                              type="button"
-                              key={id}
-                              onMouseEnter={hoverUi}
+                        {sceneObjectRows.map(({ id, name, Icon }) => (
+                          <div key={id} onMouseEnter={hoverUi}>
+                            <PanelRowButton
+                              icon={<Icon size={16} />}
+                              label={name}
                               disabled={state.isGameOver}
                               onClick={() => {
                                 if (state.isGameOver) return;
                                 handleCommand(undefined, `examine ${id.replace(/_/g, ' ')}`);
                               }}
-                              className={clsx(
-                                'group flex w-full items-center gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 text-left transition-all',
-                                state.isGameOver ? 'cursor-not-allowed opacity-40' : 'hover:bg-[#202020]',
-                              )}
-                            >
-                              <div className="text-[#e2e2e2]/60">
-                                <Icon size={16} />
-                              </div>
-                              <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                            />
+                          </div>
+                        ))}
+                      </CollapsiblePanel>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-auto hidden shrink-0 border-t border-[#353535] p-6 pt-4 md:block">
-                  <div className="border-b-4 border-[#ffaaf6] bg-[#131313] p-4">
-                    <div className="mb-1 text-[10px] uppercase tracking-widest text-[#ffaaf6]">System Status</div>
+                <div className="mt-auto hidden shrink-0 border-t border-border-base p-6 pt-4 md:block">
+                  <div className="border-b-4 border-accent-magenta bg-bg-base p-4">
+                    <div className="mb-1 text-[10px] uppercase tracking-widest text-accent-magenta">System Status</div>
                     <div className="text-xs font-bold text-[#ffffff]">KERNEL: READY</div>
                     <div className="text-xs font-bold text-[#ffffff]">MEM: 640KB ALLOCATED</div>
                   </div>
@@ -1866,9 +1786,11 @@ export default function App() {
         />
 
         {mainFooter}
-      </div>
-      {infoModal}
-      {loadModal}
+      </GameShell>
+      <ModalLayer>
+        {infoModal}
+        {loadModal}
+      </ModalLayer>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import * as LucideIcons from 'lucide-react';
+import { resolveIconComponent } from '../lib/iconRegistry';
 
 const NARROW_MOBILE = '(max-width: 767px)';
 
@@ -12,10 +12,6 @@ interface InventoryAnimationProps {
   startDelayMs?: number;
   onComplete: () => void;
 }
-
-const ICON_ALIASES: Record<string, string> = {
-  Shoe: 'Footprints',
-};
 
 export default function InventoryAnimation({
   itemId,
@@ -54,9 +50,7 @@ export default function InventoryAnimation({
     };
   }, [startDelayMs]);
 
-  const resolvedIconName = iconName ? ICON_ALIASES[iconName] ?? iconName : undefined;
-  const Candidate = resolvedIconName ? (LucideIcons as any)[resolvedIconName] : undefined;
-  const Icon = ((Candidate ?? LucideIcons.Package) as React.ComponentType<{ size?: number; className?: string }>) as React.ComponentType<{
+  const Icon = resolveIconComponent(iconName) as React.ComponentType<{
     size?: number;
     className?: string;
   }>;

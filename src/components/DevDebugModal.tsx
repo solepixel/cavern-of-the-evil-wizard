@@ -13,8 +13,8 @@ interface DevDebugModalProps {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-b border-[#353535] py-3 last:border-b-0">
-      <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#ffaaf6]">{title}</h3>
+    <section className="border-b border-border-base py-3 last:border-b-0">
+      <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-accent-magenta">{title}</h3>
       <div className="space-y-1 text-[11px] leading-snug text-[#c8c8c8]">{children}</div>
     </section>
   );
@@ -52,7 +52,7 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
   const audio = audioService.getDebugAudioSnapshot();
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-200 flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -63,19 +63,19 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
       <motion.div
         initial={{ scale: 0.96, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden border-4 border-[#35ebeb] bg-[#131313] sm:my-0"
+        className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden border-4 border-accent-cyan bg-bg-base sm:my-0"
       >
-        <div className="absolute -left-1 -top-1 h-3 w-3 bg-[#35ebeb]" />
-        <div className="absolute -right-1 -top-1 h-3 w-3 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -left-1 h-3 w-3 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-[#35ebeb]" />
+        <div className="absolute -left-1 -top-1 h-3 w-3 bg-accent-cyan" />
+        <div className="absolute -right-1 -top-1 h-3 w-3 bg-accent-cyan" />
+        <div className="absolute -bottom-1 -left-1 h-3 w-3 bg-accent-cyan" />
+        <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-accent-cyan" />
 
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#353535] p-4 pr-3">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border-base p-4 pr-3">
           <div>
-            <h2 className="text-lg font-black uppercase tracking-widest text-[#ffaaf6]">DATA_LOG</h2>
-            <p className="mt-1 text-[10px] uppercase tracking-widest text-[#35ebeb]/80">Dev snapshot — updates live</p>
+            <h2 className="text-lg font-black uppercase tracking-widest text-accent-magenta">DATA_LOG</h2>
+            <p className="mt-1 text-[10px] uppercase tracking-widest text-accent-cyan/80">Dev snapshot — updates live</p>
           </div>
-          <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
+          <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-accent-cyan hover:text-white" aria-label="Close">
             <X size={22} />
           </button>
         </div>
@@ -104,12 +104,12 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
               ]}
             />
             {snap.sceneCommandPatterns.length > 0 && (
-              <p className="mt-2 text-[10px] font-bold uppercase text-[#e2e2e2]/50">Scene command regex keys</p>
+              <p className="mt-2 text-[10px] font-bold uppercase text-text-primary/50">Scene command regex keys</p>
             )}
             {snap.sceneCommandPatterns.length > 0 && <Lines items={snap.sceneCommandPatterns} />}
             {snap.interactionLabels.length > 0 && (
               <>
-                <p className="mt-2 text-[10px] font-bold uppercase text-[#e2e2e2]/50">Interaction labels</p>
+                <p className="mt-2 text-[10px] font-bold uppercase text-text-primary/50">Interaction labels</p>
                 <Lines items={snap.interactionLabels} />
               </>
             )}
@@ -133,12 +133,12 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
 
           <Section title="Scene objects & interactions">
             {snap.objects.length === 0 ? (
-              <p className="text-[#e2e2e2]/50">No objects in this scene.</p>
+              <p className="text-text-primary/50">No objects in this scene.</p>
             ) : (
               snap.objects.map((o) => (
-                <div key={o.objectId} className="mb-4 border-l-2 border-[#35ebeb]/40 pl-2 last:mb-0">
-                  <p className="mb-1 font-mono text-[11px] font-bold text-[#35ebeb]">
-                    {o.objectId} — {o.name} <span className="font-normal text-[#e2e2e2]/70">state: {o.state}</span>
+                <div key={o.objectId} className="mb-4 border-l-2 border-accent-cyan/40 pl-2 last:mb-0">
+                  <p className="mb-1 font-mono text-[11px] font-bold text-accent-cyan">
+                    {o.objectId} — {o.name} <span className="font-normal text-text-primary/70">state: {o.state}</span>
                   </p>
                   <Lines items={o.lines.length ? o.lines : ['(no interactions)']} />
                 </div>
@@ -165,12 +165,12 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
           </Section>
         </div>
 
-        <div className="shrink-0 border-t border-[#353535] p-3">
+        <div className="shrink-0 border-t border-border-base p-3">
           <button
             type="button"
             onMouseEnter={hoverUi}
             onClick={onClose}
-            className="w-full border-2 border-[#35ebeb] py-2 text-[10px] font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
+            className="w-full border-2 border-accent-cyan py-2 text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-text-inverse"
           >
             Close
           </button>

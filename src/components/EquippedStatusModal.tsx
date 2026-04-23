@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { X, HardHat, Shirt, Hand, PersonStanding, Footprints, Sword } from 'lucide-react';
 import { audioService } from '../lib/audioService';
 import { ITEMS } from '../gameData';
-import * as LucideIcons from 'lucide-react';
+import { resolveIconComponent } from '../lib/iconRegistry';
 
 type GearSlot = 'head' | 'torso' | 'hands' | 'legs' | 'feet';
 type WeaponHand = 'left' | 'right';
@@ -179,11 +179,10 @@ export default function EquippedStatusModal({
                   {allEquipment.length ? (
                     allEquipment.map(({ id, item }) => {
                       const equipped = equippedItemIds.includes(id);
-                      const iconKey = item.icon as keyof typeof LucideIcons | undefined;
-                      const RowIcon =
-                        (iconKey && (LucideIcons as any)[iconKey]
-                          ? ((LucideIcons as any)[iconKey] as React.ComponentType<{ size?: number; className?: string }>)
-                          : (LucideIcons.Package as React.ComponentType<{ size?: number; className?: string }>));
+                      const RowIcon = resolveIconComponent(item.icon) as React.ComponentType<{
+                        size?: number;
+                        className?: string;
+                      }>;
                       const slotLabel =
                         item.itemType === 'weapon'
                           ? `${item.weaponHand ?? 'right'} hand`

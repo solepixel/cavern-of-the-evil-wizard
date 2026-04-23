@@ -39,7 +39,7 @@ export default function InfoModal({ kind, onClose, onRebootConfirm, helpBody }: 
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-200 flex items-start justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -50,26 +50,26 @@ export default function InfoModal({ kind, onClose, onRebootConfirm, helpBody }: 
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="relative z-10 my-2 w-full max-h-[calc(100dvh-2rem)] max-w-md overflow-x-hidden overflow-y-auto border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
+        className="relative z-10 my-2 w-full max-h-[calc(100dvh-2rem)] max-w-md overflow-x-hidden overflow-y-auto border-4 border-accent-cyan bg-bg-panel p-6 sm:my-0 sm:p-8"
       >
-        <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
-        <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-[#35ebeb]" />
-        <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#35ebeb]" />
+        <div className="absolute -left-1 -top-1 h-4 w-4 bg-accent-cyan" />
+        <div className="absolute -right-1 -top-1 h-4 w-4 bg-accent-cyan" />
+        <div className="absolute -bottom-1 -left-1 h-4 w-4 bg-accent-cyan" />
+        <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-accent-cyan" />
 
         <div className="mb-6 flex items-start justify-between gap-4">
-          <h2 className="text-xl font-black uppercase tracking-widest text-[#ffaaf6]">{content.title}</h2>
-          <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
+          <h2 className="text-xl font-black uppercase tracking-widest text-accent-magenta">{content.title}</h2>
+          <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-accent-cyan hover:text-white" aria-label="Close">
             <X size={24} />
           </button>
         </div>
-        <p className="text-sm leading-relaxed text-[#e2e2e2]/90">{content.body}</p>
+        <p className="text-sm leading-relaxed text-text-primary/90">{content.body}</p>
         <button
           type="button"
           autoFocus
           onMouseEnter={hoverUi}
           onClick={handleAcknowledge}
-          className="mt-8 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
+          className="mt-8 w-full border-2 border-accent-cyan py-3 text-xs font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-text-inverse"
         >
           ACKNOWLEDGE
         </button>
