@@ -828,7 +828,7 @@ export const SCENES: Record<string, Scene> = {
         text: 'You duck back into your bedroom.',
         nextScene: 'bedroom',
       },
-      'look( at)?( the)? photos': {
+      '(examine|look)( at)?( the)? photos': {
         text: 'The photos show you and your parents at various ages. You look so small in them—like proof you were ever little.',
         scoreDelta: 3,
       },

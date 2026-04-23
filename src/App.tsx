@@ -386,18 +386,19 @@ export default function App() {
   }, [state.history]);
 
   useEffect(() => {
-    const modalOpen = isSettingsOpen || infoModalKind !== null;
+    const modalOpen = isSettingsOpen || infoModalKind !== null || isEquippedModalOpen;
     if (!modalOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        setIsEquippedModalOpen(false);
         setIsSettingsOpen(false);
         setInfoModalKind(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isSettingsOpen, infoModalKind]);
+  }, [isSettingsOpen, infoModalKind, isEquippedModalOpen]);
 
   // Compute current scene early so hooks remain unconditional (no hooks after early returns).
   const currentScene = SCENES[state.currentSceneId] ?? SCENES.cutscene_intro;
@@ -443,7 +444,9 @@ export default function App() {
     state.isGameOver,
   ]);
 
-  const isCutscene = Boolean(state.gameStarted && !state.namingPhase && state.currentSceneId.startsWith('cutscene_'));
+  const isCutscene = Boolean(
+    state.gameStarted && !state.namingPhase && !state.isGameOver && state.currentSceneId.startsWith('cutscene_'),
+  );
   const [postCutsceneChromeKey, setPostCutsceneChromeKey] = useState(0);
   const cutsceneSweepRef = useRef(false);
 
@@ -470,6 +473,24 @@ export default function App() {
     setMobileRightOpen(false);
   }, [postCutsceneChromeKey]);
 
+  useEffect(() => {
+    if (!state.isGameOver) return;
+    setIsEquippedModalOpen(false);
+    setIsAvatarModalOpen(false);
+  }, [state.isGameOver]);
+
+  const prevGameOverRef = useRef(state.isGameOver);
+  useEffect(() => {
+    const wasGameOver = prevGameOverRef.current;
+    prevGameOverRef.current = state.isGameOver;
+    if (state.isGameOver && !wasGameOver) {
+      const last = audioService.getDebugAudioSnapshot().lastSfx ?? '';
+      if (!last.toLowerCase().includes('death_rattle')) {
+        audioService.playSound('death_rattle');
+      }
+    }
+  }, [state.isGameOver]);
+
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
       if (lineIndex === state.history.length - 1) {
@@ -495,15 +516,16 @@ export default function App() {
 
   const handleCommand = (e?: React.FormEvent, manualCommand?: string) => {
     if (e) e.preventDefault();
+    const isManualCommand = typeof manualCommand === 'string';
 
-    if (pendingCutsceneState) {
+    if (!isManualCommand && pendingCutsceneState) {
       if (!skipTypewriter && state.history.length > 0) {
         setSkipTypewriter(true);
       }
       return;
     }
 
-    if (!skipTypewriter && state.history.length > 0) {
+    if (!isManualCommand && !skipTypewriter && state.history.length > 0) {
       setSkipTypewriter(true);
       return;
     }
@@ -1104,11 +1126,12 @@ export default function App() {
             <button
               type="button"
               onMouseEnter={hoverUi}
+              disabled={state.isGameOver}
               onClick={() => {
                 setMobileLeftOpen(false);
                 setMobileRightOpen(true);
               }}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98]"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Open inventory and scene panel"
             >
               <PackageOpen size={24} strokeWidth={2} />
@@ -1183,11 +1206,12 @@ export default function App() {
                     <button
                       type="button"
                       onMouseEnter={hoverUi}
+                      disabled={state.isGameOver}
                       onClick={() => {
                         setDraftAvatar(localAvatar);
                         setIsAvatarModalOpen(true);
                       }}
-                      className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535] hover:border-[#35ebeb]"
+                      className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535] hover:border-[#35ebeb] disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Change avatar"
                     >
                       <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
@@ -1281,9 +1305,14 @@ export default function App() {
                           key={k}
                           type="button"
                           onMouseEnter={hoverUi}
-                          onClick={() => setIsEquippedModalOpen(true)}
+                          disabled={state.isGameOver}
+                          onClick={() => {
+                            if (state.isGameOver) return;
+                            setIsEquippedModalOpen(true);
+                          }}
                           className={clsx(
                             'flex h-9 items-center justify-center border bg-[#131313] text-[#35ebeb] hover:bg-[#353535]/40',
+                            state.isGameOver && 'cursor-not-allowed opacity-45 hover:bg-[#131313]',
                             alert ? 'border-[#35ebeb]' : 'border-[#353535]',
                           )}
                           aria-label={`View equipped (${label})`}
@@ -1299,15 +1328,23 @@ export default function App() {
                   <button
                     type="button"
                     onMouseEnter={hoverUi}
+                    disabled={state.isGameOver}
                     onClick={() => setSceneInteractionsVisible((v) => !v)}
-                    className="flex w-full items-center gap-4 bg-[#ffffff] p-4 text-sm font-black uppercase tracking-tighter text-[#002020]"
+                    className={clsx(
+                      'flex w-full items-center gap-4 p-4 text-sm font-black uppercase tracking-tighter',
+                      state.isGameOver
+                        ? 'cursor-not-allowed bg-[#ffffff]/75 text-[#4d4d4d]'
+                        : 'bg-[#ffffff] text-[#002020]',
+                    )}
                   >
                     <Heart size={20} /> STATUS
                   </button>
                   <button
                     type="button"
                     onMouseEnter={hoverUi}
+                    disabled={state.isGameOver}
                     onClick={() => {
+                      if (state.isGameOver) return;
                       if (isNarrowMobile) {
                         setMobileLeftOpen(false);
                         setMobileRightOpen(true);
@@ -1316,7 +1353,12 @@ export default function App() {
                         setMobileLeftOpen(false);
                       }
                     }}
-                    className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
+                    className={clsx(
+                      'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
+                      state.isGameOver
+                        ? 'cursor-not-allowed text-[#35ebeb]/35'
+                        : 'text-[#35ebeb] opacity-70 hover:bg-[#ffaaf6] hover:text-[#131313]',
+                    )}
                   >
                     <Backpack size={20} /> INVENTORY
                   </button>
@@ -1324,11 +1366,18 @@ export default function App() {
                     <button
                       type="button"
                       onMouseEnter={hoverUi}
+                      disabled={state.isGameOver}
                       onClick={() => {
+                        if (state.isGameOver) return;
                         handleCommand(undefined, 'view map');
                         setMobileLeftOpen(false);
                       }}
-                      className="flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter text-[#35ebeb] opacity-70 transition-all hover:bg-[#ffaaf6] hover:text-[#131313]"
+                      className={clsx(
+                        'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
+                        state.isGameOver
+                          ? 'cursor-not-allowed text-[#35ebeb]/35'
+                          : 'text-[#35ebeb] opacity-70 hover:bg-[#ffaaf6] hover:text-[#131313]',
+                      )}
                     >
                       <MapIcon size={20} /> MAP
                     </button>
@@ -1420,8 +1469,13 @@ export default function App() {
                 </>
               )}
 
-              <div className="absolute right-4 top-4 border-l-4 border-[#35ebeb] bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase text-[#35ebeb]">
-                AREA: {getSceneAreaDisplayLabel(state, state.currentSceneId)}
+              <div
+                className={clsx(
+                  'absolute right-4 top-4 border-l-4 bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase',
+                  state.isGameOver ? 'border-red-500 text-red-400' : 'border-[#35ebeb] text-[#35ebeb]',
+                )}
+              >
+                {state.isGameOver ? 'GAME OVER' : `AREA: ${getSceneAreaDisplayLabel(state, state.currentSceneId)}`}
               </div>
 
               {state.isGameOver && (
@@ -1526,7 +1580,7 @@ export default function App() {
                 <div
                   className="relative min-w-0 flex-1"
                   onPointerDown={(e) => {
-                    if (!isNarrowMobile || state.isGameOver) return;
+                    if (!isNarrowMobile) return;
                     const t = e.target as HTMLElement;
                     if (t.closest('button')) return;
                     if (t === promptInputRef.current) return;
@@ -1552,7 +1606,7 @@ export default function App() {
                       placeholder={
                         inputValue ? '' : awaitingPromptResponse ? 'ENTER RESPONSE...' : 'ENTER COMMAND...'
                       }
-                      disabled={state.isGameOver}
+                      disabled={false}
                     />
                   </div>
 
@@ -1577,7 +1631,7 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                {isNarrowMobile && !state.isGameOver && (
+                {isNarrowMobile && (
                   <button
                     type="submit"
                     onMouseEnter={hoverUi}
@@ -1691,8 +1745,15 @@ export default function App() {
                                     type="button"
                                     key={id}
                                     onMouseEnter={hoverUi}
-                                    onClick={() => handleCommand(undefined, `examine ${ITEMS[id].name}`)}
-                                    className="group flex w-full items-center gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 text-left transition-all hover:bg-[#353535]"
+                                    disabled={state.isGameOver}
+                                    onClick={() => {
+                                      if (state.isGameOver) return;
+                                      handleCommand(undefined, `examine ${ITEMS[id].name}`);
+                                    }}
+                                    className={clsx(
+                                      'group flex w-full items-center gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 text-left transition-all',
+                                      state.isGameOver ? 'cursor-not-allowed opacity-45' : 'hover:bg-[#353535]',
+                                    )}
                                   >
                                     <div className="text-[#35ebeb]">
                                       <Icon size={16} />
@@ -1742,8 +1803,15 @@ export default function App() {
                               type="button"
                               key={id}
                               onMouseEnter={hoverUi}
-                              onClick={() => handleCommand(undefined, `examine ${id.replace(/_/g, ' ')}`)}
-                              className="group flex w-full items-center gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 text-left transition-all hover:bg-[#202020]"
+                              disabled={state.isGameOver}
+                              onClick={() => {
+                                if (state.isGameOver) return;
+                                handleCommand(undefined, `examine ${id.replace(/_/g, ' ')}`);
+                              }}
+                              className={clsx(
+                                'group flex w-full items-center gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 text-left transition-all',
+                                state.isGameOver ? 'cursor-not-allowed opacity-40' : 'hover:bg-[#202020]',
+                              )}
                             >
                               <div className="text-[#e2e2e2]/60">
                                 <Icon size={16} />

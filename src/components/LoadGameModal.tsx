@@ -142,8 +142,15 @@ export default function LoadGameModal({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 gap-3">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[#353535] bg-[#0f0f0f]">
-                            <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+                          <div className="flex w-12 shrink-0 flex-col items-center">
+                            <div className="flex h-12 w-12 items-center justify-center overflow-hidden border border-[#353535] bg-[#0f0f0f]">
+                              <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+                            </div>
+                            <div className="mt-2 text-center text-[10px] font-black uppercase leading-tight tracking-widest text-[#35ebeb]/90">
+                              SCORE:
+                              <br />
+                              {typeof s.score === 'number' ? s.score : 0}
+                            </div>
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

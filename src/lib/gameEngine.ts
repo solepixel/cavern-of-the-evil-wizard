@@ -35,6 +35,8 @@ export interface SaveSlotSummary {
   avatarSrc?: string;
   /** User-editable label shown in the load dialog (optional). */
   note?: string;
+  /** Score snapshot at save time. */
+  score?: number;
 }
 
 interface SaveSlotRecord extends SaveSlotSummary {
@@ -65,7 +67,7 @@ export function listSaveSlots(): SaveSlotSummary[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SaveSlotRecord[];
     return (parsed ?? [])
-      .map(({ id, savedAt, sceneId, playerName, note, areaLabel, avatarSrc, state }) => ({
+      .map(({ id, savedAt, sceneId, playerName, note, areaLabel, avatarSrc, score, state }) => ({
         id,
         savedAt,
         sceneId,
@@ -78,6 +80,11 @@ export function listSaveSlots(): SaveSlotSummary[] {
               : undefined,
         ...(typeof avatarSrc === 'string' && avatarSrc.trim() !== '' ? { avatarSrc: avatarSrc.trim() } : {}),
         ...(typeof note === 'string' && note.trim() !== '' ? { note: note.trim() } : {}),
+        ...(typeof score === 'number' && !Number.isNaN(score)
+          ? { score }
+          : typeof state?.score === 'number' && !Number.isNaN(state.score)
+            ? { score: state.score }
+            : {}),
       }))
       .sort((a, b) => b.savedAt - a.savedAt);
   } catch {
@@ -154,6 +161,7 @@ function persistSaveSlot(state: GameState) {
     sceneId: state.currentSceneId,
     playerName: state.playerName,
     areaLabel: getSceneAreaDisplayLabel(state, state.currentSceneId),
+    score: state.score ?? 0,
     avatarSrc,
     state,
   };
@@ -762,6 +770,9 @@ export function processCommand(state: GameState, input: string): GameState {
   const finish = (out: GameState) => {
     const afterDeath =
       out.isGameOver ? revertProgressStatsToCheckpoint(out) : out;
+    if (!preCmdStateForTurn.isGameOver && afterDeath.isGameOver) {
+      audioService.playSound('death_rattle');
+    }
     syncLoopingSceneAudio(afterDeath);
     return postCommandTurn(preCmdStateForTurn, afterDeath, pendingAliasConsumed);
   };
@@ -772,6 +783,30 @@ export function processCommand(state: GameState, input: string): GameState {
   let newState = { ...base, history: [...base.history, `> ${displayLine}`] };
 
   const replaceName = (text: string) => text.replace(/{{name}}/g, base.playerName);
+
+  if (base.isGameOver) {
+    if (/^(help|h)$/i.test(command)) {
+      newState.history.push(getHelpText(currentScene));
+      return finish(newState);
+    }
+    if (/^(reload( last)? checkpoint|load checkpoint|continue)$/i.test(command)) {
+      if (!base.lastCheckpoint) {
+        newState.history.push(sysLine('No checkpoint available to reload.'));
+        return finish(newState);
+      }
+      return finish(resumeFromCheckpointWithFeedback(base.lastCheckpoint));
+    }
+    if (/^(settings|open settings)$/i.test(command)) {
+      newState.history.push(sysLine('Open SETTINGS from the sidebar button.'));
+      return finish(newState);
+    }
+    if (/^(reboot|restart|system reboot)$/i.test(command)) {
+      newState.history.push(sysLine('Use SYSTEM_REBOOT from the footer to restart.'));
+      return finish(newState);
+    }
+    newState.history.push('Command not recognized.');
+    return finish(newState);
+  }
 
   /**
    * Built-in commands live in a JSON-like table with regex strings.
