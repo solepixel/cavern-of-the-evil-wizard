@@ -8,20 +8,21 @@ import {
 } from './types';
 import { audioService } from './lib/audioService';
 import { SCORE_FIRST_ENTER_SCENE, SCORE_PICKUP_ITEM } from './lib/gameScoring';
+import { FATAL_PREFIX } from './lib/gameEngine';
 
 export const ITEMS: Record<string, Item> = {
   'old_key': {
     id: 'old_key',
     name: 'Old Brass Key',
-    description: 'A heavy, tarnished key found in your childhood wardrobe.',
-    useText: 'You insert the key into the lock. It turns with a satisfying click.',
+    description: 'A heavy, tarnished [[key]] found in your childhood wardrobe.',
+    useText: 'You insert the [[key]] into the lock. It turns with a satisfying click.',
     icon: 'Key'
   },
   'quarter': {
     id: 'quarter',
     name: 'Quarter',
-    description: 'A quarter you found under the rug in your room.',
-    useText: 'You pick up the quarter. It feels like a small reward for your efforts.',
+    description: 'A [[quarter]] you found under the rug in your room.',
+    useText: 'You pick up the [[quarter]]. It feels like a small reward for your efforts.',
     icon: 'Coins',
   },
   'comic_book': {
@@ -40,14 +41,16 @@ export const ITEMS: Record<string, Item> = {
   },
   'giants_hoodie': {
     id: 'giants_hoodie',
-    name: 'Blue NY Giants Hoodie',
+    name: 'NY Giants Hoodie',
     description: "Your dad's game-day hoodie—faded blue, obnoxiously loyal, and actually sized for an adult.",
-    useText: 'You pull on the Giants hoodie. It swallows your shoulders in the best way possible—you finally look less like a sleepover accident.',
+    useText: 'You pull on the [[Giants hoodie]]. It swallows your shoulders in the best way possible—you finally look less like a sleepover accident.',
     icon: 'Shirt',
+    itemType: 'gear',
+    gearSlot: 'torso',
     equippable: true,
     equipmentSlot: 'torso',
     wearDescription:
-      "You're wearing a blue NY Giants hoodie over your ridiculous dinosaur pajamas. It's not fashion. It's camouflage.",
+      "You're wearing a blue NY Giants hoodie with no shirt underneath. It's not fashion. It's camouflage.",
   },
   'sweatpants_gray': {
     id: 'sweatpants_gray',
@@ -55,25 +58,29 @@ export const ITEMS: Record<string, Item> = {
     description: 'Soft gray sweatpants that look like they were stolen from a laundry basket labeled DAD.',
     useText: 'You step into the gray sweatpants. They cinch at the waist and actually reach your ankles.',
     icon: 'Shirt',
+    itemType: 'gear',
+    gearSlot: 'legs',
     equippable: true,
     equipmentSlot: 'legs',
-    wearDescription: 'Gray sweatpants over dinosaur pajama legs—dignity is still on thin ice, but at least your knees are covered.',
+    wearDescription: 'Gray sweatpants over dinosaur underwear—dignity is still on thin ice, but at least your legs are covered.',
   },
   'sneakers_white': {
     id: 'sneakers_white',
     name: 'White Sneakers',
-    description: 'A pair of clean white sneakers from the closet shelf—generic, anonymous, and blessedly adult-sized.',
-    useText: 'You lace up the sneakers. Your dinosaur feet stop scraping the floorboards.',
+    description: 'A pair of clean [[white sneakers]] from the closet shelf—generic, anonymous, and blessedly adult-sized.',
+    useText: 'You lace up the plain [[white dad-sneakers]]. Socks are, apparently, optional.',
     icon: 'Shoe',
+    itemType: 'gear',
+    gearSlot: 'feet',
     equippable: true,
     equipmentSlot: 'feet',
-    wearDescription: 'White sneakers complete the disguise. You still look like a sleepwalker from a sitcom, but a clothed one.',
+    wearDescription: '[[White sneakers]] complete the disguise. You still look like a sleepwalker from a sitcom, but a clothed one.',
   },
   'rattle': {
     id: 'rattle',
     name: 'Baby Rattle',
-    description: 'A plastic rattle with cheerful primary colors. It feels absurd in your adult hands.',
-    useText: 'You give the rattle a cautious shake. It chirps like a tiny tambourine of innocence.',
+    description: 'A plastic [[rattle]] with cheerful primary colors. It feels absurd in your adult hands.',
+    useText: 'You give the [[rattle]] a cautious shake. It chirps like a tiny tambourine of innocence.',
     icon: 'Circle',
   },
   'flashlight': {
@@ -110,6 +117,8 @@ export const ITEMS: Record<string, Item> = {
     description: 'A short, notched blade issued by dwarves who have opinions about your stance.',
     useText: 'You swing the training sword. It hums like winter wind.',
     icon: 'Sword',
+    itemType: 'weapon',
+    weaponHand: 'right',
   },
   'glacial_armor': {
     id: 'glacial_armor',
@@ -117,8 +126,10 @@ export const ITEMS: Record<string, Item> = {
     description: 'Layered furs, ice-threaded mail, and runes that keep your blood moving in killing cold.',
     useText: 'You strap on the glacial armor. The cold outside suddenly feels like a dare, not a death sentence.',
     icon: 'Shield',
+    itemType: 'gear',
+    gearSlot: 'torso',
     equippable: true,
-    equipmentSlot: 'armor',
+    equipmentSlot: 'torso',
     wearDescription:
       'Glacial armor turns you into a walking iceberg knight—ridiculous in any living room, perfect for an evil wizard.',
   },
@@ -154,7 +165,7 @@ export const OBJECTS: Record<string, GameObject> = {
       'contents:empty|door:open':
         "It's an opened wardrobe. It holds your childhood clothes, but none of that appears to fit you anymore. The key is gone.",
       'contents:empty|door:closed':
-        "The wardrobe is closed. Your clothes are inside; the brass key is no longer on the hook.",
+        "The wardrobe is closed. Your clothes are inside; the brass key is no longer inside.",
     },
     interactions: [
       {
@@ -193,6 +204,7 @@ export const OBJECTS: Record<string, GameObject> = {
         text: "You close the wardrobe. It's now closed.",
         setAxes: { door: 'closed' },
         playSound: 'wood_creak_close',
+        scoreDelta: 5,
         redundantMessage: "The wardrobe is closed. It can't be closed anymore. You've closed it the most it can be closed.",
       },
       {
@@ -301,6 +313,7 @@ export const OBJECTS: Record<string, GameObject> = {
         nextScene: 'hallway',
         removeItem: 'old_key',
         setState: 'unlocked',
+        playSound: ['door_unlock', 'wood_creak_open'],
         redundantMessage: 'The door is already unlocked.',
         missingRequirementsMessage: "You don't have a key to use on the door.",
       },
@@ -366,8 +379,9 @@ export const OBJECTS: Record<string, GameObject> = {
       },
       {
         regex: 'jump (on(to)?)( the)? bed',
-        text: "You attempt to jump on the bed. You are too tall and you hit your head on the ceiling. You land awkwardly on your ankle and fall too the floor. Unfortunately, your neck breaks your fall and you are dead.",
+        text: "You attempt to jump on the [[bed]]. You are too tall and you hit your head on the ceiling. You land awkwardly on your ankle and fall too the floor from the top bunk. Unfortunately, your neck breaks your fall and you are dead.",
         isDeath: true,
+        damage: 100,
         playSound: ['bone_break', 'death_rattle'],
       },
       {
@@ -456,34 +470,36 @@ export const OBJECTS: Record<string, GameObject> = {
     legacyStateKey: 'door',
     descriptions: {
       'contents:full|door:closed': "Your parents' closet—Giants gear, folded laundry, and the faint smell of fabric softener and regret.",
-      'contents:full|door:open': 'The closet stands open: a blue Giants hoodie, gray sweatpants, and a pair of white sneakers wait like a costume for a normal person.',
+      'contents:full|door:open': 'The closet stands open: a blue [[Giants HOODIE]], [[gray SWEATPANTS]], and a pair of [[white SNEAKERS]] wait like a costume for a normal person.',
       'contents:empty|door:open': "You've already taken the useful clothes. The rest is just adult life in textile form.",
     },
     interactions: [
       {
-        regex: '(open|search)( the)? closet',
+        regex: '(open|search)( the|your parent\'?s)? closet',
         whenAxes: { door: 'closed', contents: 'full' },
-        text: 'You ease the closet open. Giants hoodie, gray sweatpants, white sneakers—borrowed dignity.',
+        text: 'You ease the closet open. You notice your father\'s blue [[Giants HOODIE]], [[gray SWEATPANTS]], and [[white SNEAKERS]]. They appear to be your size.',
         setAxes: { door: 'open' },
         playSound: 'wood_creak_open',
       },
       {
-        regex: '(take|get|grab) (the )?(clothes|outfit|hoodie|sneakers|sweatpants)( from closet)?',
+        regex: '(take|get|grab) (the )?(cloth(es|ing)|outfit|hoodie|sneakers|sweatpants)( from closet)?',
         whenAxes: { door: 'open', contents: 'full' },
-        text: "You grab the hoodie, sweatpants, and sneakers. It's not your style—it's better. It's survival.",
+        text: "You grab the hoodie, sweatpants, and sneakers. It's not your style, but at least it fits!",
         setAxes: { contents: 'empty' },
         scoreDelta: 15,
+        playSound: 'retrieve_clothing',
         callback: (s) => ({
           ...s,
           inventory: [...new Set([...s.inventory, 'giants_hoodie', 'sweatpants_gray', 'sneakers_white'])],
         }),
       },
       {
-        regex: 'close( the)? closet',
+        regex: 'close( the)? closet( door)?',
         whenAxes: { door: 'open' },
         text: 'You close the closet.',
         setAxes: { door: 'closed' },
         playSound: 'wood_creak_close',
+        scoreDelta: 5,
       },
     ],
   },
@@ -497,7 +513,7 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(take|get|pick up) rattle',
+        regex: '(take|get|pick up)( the)?( baby)? rattle',
         whenObjectState: 'rattle_here',
         text: 'You pocket the rattle. It feels ridiculous. It also feels like peace insurance.',
         getItem: 'rattle',
@@ -523,16 +539,17 @@ export const OBJECTS: Record<string, GameObject> = {
         reuseInteractionId: REUSE_INTERACTION_EXAMINE,
       },
       {
-        regex: '(give|hand) rattle( to)?( the)?( baby)? sister',
+        regex: '(give|hand)( the)?( baby)? rattle( to)?( the|your)?( baby)? sister',
         whenAxes: { sister: 'crying' },
         requiresInventory: ['rattle'],
         removeItem: 'rattle',
         text: 'You offer the rattle. Your sister grabs it mid-wail—then goes suspiciously quiet, like someone flipped a breaker.',
         setAxes: { sister: 'quiet' },
         scoreDelta: 25,
+        playSound: 'rattle_noise',
       },
       {
-        regex: '(give|hand) rattle( to)?( the)?( baby)? sister',
+        regex: '(give|hand)( the)?( baby)? rattle( to)?( the|your)?( baby)? sister',
         whenAxes: { sister: 'frenzy' },
         text: 'You try the rattle again. She bats it away. This is beyond rattles. This is a category-five meltdown.',
       },
@@ -552,7 +569,7 @@ export const OBJECTS: Record<string, GameObject> = {
           const pen = s.objectStates?.playpen;
           const sister =
             typeof pen === 'object' && pen && 'sister' in pen ? (pen as { sister: string }).sister : 'crying';
-          const fatal = '[DEATH] YOU HAVE DIED.';
+          const fatal = FATAL_PREFIX + 'YOU HAVE DIED.';
           if (sister === 'frenzy') {
             return {
               ...s,
@@ -696,11 +713,11 @@ export const SCENES: Record<string, Scene> = {
     viewportHandoffLayoutId: 'viewport-scene-panel',
     title: "{{name}}'s Bedroom",
     description:
-      "You're in your childhood bedroom—ceiling too low, bunk too short, 80s posters watching you like old friends. Your dinosaur pajamas strain at the seams. A WARDROBE, shuttle-pattern RUG, WINDOW, and DOOR are the obvious landmarks.",
+      "You're in your childhood bedroom—ceiling too low, bunk too short, 80s posters watching you like old friends. The elastic of your dinosaur underwear strains to the max. A WARDROBE, shuttle-pattern RUG, WINDOW, and DOOR are the obvious landmarks.",
     examineRefreshText:
       "Looking around the room, you see the bunk BED, posters on the walls, the WARDROBE, RUG, WINDOW, and DOOR. When it's unlocked, that door is your way back to the upstairs HALL—try OPEN DOOR, GO HALL, or LEAVE ROOM once you're ready to step out.",
     onLoad: {
-      text: "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur pajamas, but they're stretched to their limit across your adult frame. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
+      text: "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur underwear, but they're stretched to their limit across your adult waistline. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
     },
     image: "/assets/images/bedroom.png",
     isCheckpoint: true,
@@ -749,6 +766,10 @@ export const SCENES: Record<string, Scene> = {
       south: 'parents_bedroom',
     },
     interactionLabels: ['STAIRS', 'PARENTS_ROOM', 'BATHROOM', 'YOUR_ROOM'],
+    isCheckpoint: true,
+    onLoad: {
+      text: "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board. NORTH: the stairs down. SOUTH: your parents' bedroom door. EAST: the bathroom. WEST: your bedroom.",
+    },
     commands: {
       '(go|walk|head) (north|downstairs)': {
         callback: (s) => {
@@ -767,9 +788,12 @@ export const SCENES: Record<string, Scene> = {
               };
             }
             return {
-              ...s,
-              isGameOver: true,
+              ...s, // TODO: Why does playSound not work here?
+              playSound: 'death_rattle', // TODO: Add police sirens sound here.
+              damage: 100,
               hp: 0,
+              isDeath: true,
+              isGameOver: true,
               history: [
                 ...s.history,
                 "You go downstairs anyway. Your mother turns from the sink—and freezes. She doesn't recognize the half-dressed grown man in her kitchen. She screams. Police arrive fast. In the chaos of flashlights and shouted commands, something goes terribly wrong. This is New Jersey. It wasn't pretty.",
@@ -792,15 +816,15 @@ export const SCENES: Record<string, Scene> = {
           );
         },
       },
-      '(go|walk|head) south': {
+      '(go|walk|head)( to(wards)?)? (south|(your )?parent\'?s\'? ((bed)?room))': {
         text: "You ease open your parents' bedroom door and slip inside.",
         nextScene: 'parents_bedroom',
       },
-      '(go|walk|head) east': {
+      '(go|walk|head)( to(wards)?)? (east|bathroom)': {
         text: "You step up to the bathroom door.",
         nextScene: 'bathroom_hall',
       },
-      '(go|walk|head) west': {
+      '(go|walk|head)( to(wards)?)? (west|your (bedroom|room))': {
         text: 'You duck back into your bedroom.',
         nextScene: 'bedroom',
       },
@@ -814,7 +838,7 @@ export const SCENES: Record<string, Scene> = {
     id: 'bathroom_hall',
     title: 'Outside the Bathroom',
     description:
-      "You're at the bathroom door. It's locked. From inside comes the unmistakable sound of your dad clearing his throat like he's hosting a morning radio show.",
+      "You are facing the bathroom door. It's locked. From inside comes the unmistakable sound of your dad clearing his throat like he's hosting a morning radio show.",
     objects: ['bathroom_door'],
     exits: { back: 'hallway' },
     commands: {
@@ -833,12 +857,18 @@ export const SCENES: Record<string, Scene> = {
       'The playpen, the closet, the nightstand, the door—everything feels louder than it should. Your sister watches you with the moral certainty of a judge.',
     objects: ['parents_closet', 'rattle_table', 'playpen', 'parents_exit_door'],
     interactionLabels: ['CLOSET', 'PLAYPEN', 'NIGHTSTAND', 'DOOR'],
-    exits: {},
+    exits: {
+      hallway: 'hallway',
+      hall: 'hallway',
+      room: 'hallway',
+    },
     commands: {},
   },
   'cutscene_house_escape': {
     id: 'cutscene_house_escape',
     viewportHandoffLayoutId: 'viewport-scene-panel',
+    cutscenePanelOrdinal: 2,
+    cutsceneChoiceOverlines: ['TAKE BIKE TO FAIRGROUNDS', 'RETURN TO HOUSE'],
     title: 'Into the Night',
     description:
       'The suburban night air hits you like a reboot. Streetlights. Crickets. Somewhere, a dog barks at the universe.',
@@ -846,15 +876,29 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      'continue': {
+      'TAKE BIKE TO FAIRGROUNDS': {
         text: 'You grab your bike from the side of the house and kick off into the dark.',
         nextScene: 'cutscene_bike_to_fairgrounds',
+      },
+      'RETURN TO HOUSE': {
+        text: "You turn around and head back into your house. As you wipe your feet on the doormat, your mom sees you and begins to panic. In the commotion, everything goes sideways—fast.",
+        callback: (s) => {
+          audioService.playSound('death_rattle');
+          return {
+            ...s,
+            hp: 0,
+            isGameOver: true,
+            history: [...s.history, FATAL_PREFIX + 'YOU HAVE DIED.'],
+          };
+        },
       },
     },
   },
   'cutscene_bike_to_fairgrounds': {
     id: 'cutscene_bike_to_fairgrounds',
     viewportHandoffLayoutId: 'viewport-scene-panel',
+    cutscenePanelOrdinal: 3,
+    cutsceneChoiceOverlines: ['SEARCH FOR ZOLTAR'],
     title: 'Sea Point Park',
     description:
       'You pedal until your lungs burn. The carnival lights you remember are gone—only empty chain-link and wind-torn banners remain.',
@@ -862,14 +906,14 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      'continue': {
+      'SEARCH FOR ZOLTAR': {
         text: 'At the center of the desolation, one machine remains: Zoltar, waiting like a punchline.',
-        nextScene: 'zoltar_fairgrounds',
+        nextScene: 'fairgrounds',
       },
     },
   },
-  'zoltar_fairgrounds': {
-    id: 'zoltar_fairgrounds',
+  'fairgrounds': {
+    id: 'fairgrounds',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     title: 'The Last Arcade',
     description:
@@ -883,6 +927,7 @@ export const SCENES: Record<string, Scene> = {
   'cutscene_into_movie_game': {
     id: 'cutscene_into_movie_game',
     viewportHandoffLayoutId: 'viewport-scene-panel',
+    cutscenePanelOrdinal: 4,
     title: 'CAVERN OF THE EVIL WIZARD',
     description:
       'The screen glare becomes snow. The synth music becomes wind. You are not at the fairgrounds anymore—you are inside the game, pixel borders gone, stakes horribly real.',
@@ -995,7 +1040,7 @@ export const SCENES: Record<string, Scene> = {
               history: [
                 ...s.history,
                 'You take one step inside. The cold seizes your lungs. Your muscles lock. You become a very sincere ice sculpture.',
-                '[DEATH] YOU HAVE DIED.',
+                FATAL_PREFIX + 'YOU HAVE DIED.',
               ],
             };
           }
@@ -1090,6 +1135,7 @@ export const SCENES: Record<string, Scene> = {
   'cutscene_intro': {
     id: 'cutscene_intro',
     viewportHandoffLayoutId: 'viewport-scene-panel',
+    cutscenePanelOrdinal: 1,
     title: 'A Strange Awakening',
     description: "You awake in a familiar room, however, something feels .... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
     background: "/assets/images/bedroom.png",
@@ -1122,6 +1168,7 @@ function simpleSceneEntry(
   let inventory = [...state.inventory];
   let uiVisible = state.uiVisible;
   let pendingItem = state.pendingItem;
+  let pendingItemQueue = [...(state.pendingItemQueue ?? [])];
   let hasMap = state.hasMap;
   let score = state.score ?? 0;
   let implicitScore = 0;
@@ -1136,6 +1183,11 @@ function simpleSceneEntry(
       inventory = [...inventory, onLoad.getItem];
       uiVisible = true;
       pendingItem = onLoad.getItem;
+      const t = ((ITEMS[onLoad.getItem]?.itemType ?? (ITEMS[onLoad.getItem]?.equippable ? 'gear' : 'misc')) === 'gear' ||
+        (ITEMS[onLoad.getItem]?.itemType ?? (ITEMS[onLoad.getItem]?.equippable ? 'gear' : 'misc')) === 'weapon')
+        ? 'equipment'
+        : 'inventory';
+      pendingItemQueue = [...pendingItemQueue, { id: onLoad.getItem, target: t }];
       if (onLoad.getItem === 'map') hasMap = true;
       implicitScore += SCORE_PICKUP_ITEM;
     }
@@ -1162,10 +1214,12 @@ function simpleSceneEntry(
   return {
     ...state,
     currentSceneId: sceneId,
+    ...(state.currentSceneId !== sceneId ? { focusedObjectId: undefined } : {}),
     flags,
     inventory,
     uiVisible,
     pendingItem,
+    pendingItemQueue,
     hasMap,
     score,
     history: parts.length ? [...state.history, parts.join('\n\n')] : state.history,
@@ -1187,6 +1241,7 @@ export const INITIAL_STATE: GameState = {
   uiVisible: false,
   hasMap: false,
   pendingItem: null,
+  pendingItemQueue: [],
   focusedObjectId: undefined,
   equippedItemIds: [],
   score: 0,

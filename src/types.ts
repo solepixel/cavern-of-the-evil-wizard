@@ -49,6 +49,12 @@ export interface Item {
   description: string;
   useText: string;
   icon?: string; // Lucide icon name
+  /** High-level item category for UI/commands. Defaults to `misc`. */
+  itemType?: 'gear' | 'weapon' | 'misc';
+  /** For `itemType: "gear"`: UI slot this item equips into. */
+  gearSlot?: 'head' | 'torso' | 'hands' | 'legs' | 'feet';
+  /** For `itemType: "weapon"`: preferred hand. */
+  weaponHand?: 'left' | 'right';
   /** If true, can be worn with the `equip` command while in inventory. */
   equippable?: boolean;
   /** Only one equipped item per slot (e.g. `torso`). Equipping another item in the same slot replaces it. */
@@ -141,6 +147,8 @@ export interface Scene {
   id: string;
   title: string;
   description: string;
+  /** Scene-specific HELP copy used by both HELP command and Help modal. */
+  helpText?: string;
   /** One-shot effects when this scene is entered for the first time (not from `explore the room` as a command). */
   onLoad?: SceneOnLoad;
   /** Shown for `examine room` / `explore the room` / similar refreshes (distinct from `onLoad` and from bare `look`). */
@@ -153,6 +161,10 @@ export interface Scene {
    * on their viewport image wrapper.
    */
   viewportHandoffLayoutId?: string;
+  /** Cutscene chrome: `PANEL_NN` index (e.g. 1 = bedroom intro, 3 = parents bedroom beat). */
+  cutscenePanelOrdinal?: number;
+  /** Per-choice overline above the main label; defaults to `OPTION_N`. Same order as `Object.keys(commands)`. */
+  cutsceneChoiceOverlines?: string[];
   objects: ObjectId[]; // IDs of objects present in this scene
   /** Extra interaction labels for the sidebar (e.g. BED when not a separate object) */
   interactionLabels?: string[];
@@ -194,6 +206,8 @@ export interface GameState {
   uiVisible: boolean;
   hasMap: boolean;
   pendingItem: ItemId | null;
+  /** UI animation queue for newly obtained items. */
+  pendingItemQueue?: Array<{ id: ItemId; target: 'inventory' | 'equipment' }>;
   /** Last object the user examined/acted upon (used for viewport highlight). */
   focusedObjectId?: ObjectId;
   /** Items currently worn (subset of inventory); appearance text comes from item `wearDescription`. */
@@ -227,6 +241,7 @@ export const INITIAL_STATE: GameState = {
   uiVisible: false,
   hasMap: false,
   pendingItem: null,
+  pendingItemQueue: [],
   focusedObjectId: undefined,
   equippedItemIds: [],
   score: 0,

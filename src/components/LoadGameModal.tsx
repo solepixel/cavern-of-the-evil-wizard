@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Pencil, Trash2, X } from 'lucide-react';
+import { Pencil, Save, Trash2, X } from 'lucide-react';
 import { SaveSlotSummary } from '../lib/gameEngine';
-import { SCENES } from '../gameData';
 import { audioService } from '../lib/audioService';
+import { DicebearProfile, buildDicebearAvatarUrl } from '../lib/dicebearAvatar';
 
 function formatDate(ms: number) {
   try {
@@ -26,6 +26,7 @@ interface LoadGameModalProps {
   onLoad: (slotId: string) => void;
   onDeleteSlot: (slotId: string) => void;
   onSaveSlotNote: (slotId: string, note: string) => void;
+  dicebearProfile: DicebearProfile;
 }
 
 export default function LoadGameModal({
@@ -35,6 +36,7 @@ export default function LoadGameModal({
   onLoad,
   onDeleteSlot,
   onSaveSlotNote,
+  dicebearProfile,
 }: LoadGameModalProps) {
   const hoverUi = () => audioService.playHoverThrottled();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -55,12 +57,38 @@ export default function LoadGameModal({
     cancelEdit();
   };
 
+  const hasUnsavedEdits = () => {
+    if (!editingId) return false;
+    const s = slots.find((x) => x.id === editingId);
+    const original = (s?.note ?? '').trim();
+    return draftNote.trim() !== original;
+  };
+
+  const tryClose = () => {
+    if (hasUnsavedEdits()) {
+      if (!window.confirm('You have unsaved note changes. Close and discard them?')) return;
+    }
+    onClose();
+  };
+
   const tryDelete = (id: string) => {
     if (window.confirm('Delete this checkpoint? This cannot be undone.')) {
       onDeleteSlot(id);
       if (editingId === id) cancelEdit();
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        tryClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, editingId, draftNote, slots]);
 
   return (
     <AnimatePresence>
@@ -70,7 +98,7 @@ export default function LoadGameModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={tryClose}
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
           />
 
@@ -79,7 +107,7 @@ export default function LoadGameModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 12 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
+            className="relative z-10 my-2 flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden border-4 border-[#35ebeb] bg-[#1b1b1b] p-6 sm:my-0 sm:p-8"
           >
             <div className="absolute -left-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
             <div className="absolute -right-1 -top-1 h-4 w-4 bg-[#35ebeb]" />
@@ -87,8 +115,10 @@ export default function LoadGameModal({
             <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#35ebeb]" />
 
             <div className="mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">
-              <h2 className="text-xl font-black uppercase tracking-widest text-[#ffaaf6]">LOAD GAME</h2>
-              <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
+              <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-widest text-[#ffaaf6]">
+                <Save size={18} /> LOAD GAME
+              </h2>
+              <button type="button" onMouseEnter={hoverUi} onClick={tryClose} className="text-[#35ebeb] hover:text-white" aria-label="Close">
                 <X size={24} />
               </button>
             </div>
@@ -100,28 +130,49 @@ export default function LoadGameModal({
                 </div>
               ) : (
                 slots.map((s) => {
-                  const sceneTitle = SCENES[s.sceneId]?.title ?? s.sceneId;
                   const isEditing = editingId === s.id;
+                  const avatarSrc =
+                    s.avatarSrc && s.avatarSrc.trim() !== ''
+                      ? s.avatarSrc
+                      : buildDicebearAvatarUrl(`${s.playerName || 'PLAYER'}-${s.id}`, dicebearProfile);
                   return (
                     <div
                       key={s.id}
                       className="border-l-4 border-[#35ebeb] bg-[#131313] p-4 text-left transition-colors hover:bg-[#1f1f1f]"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <span className="text-sm font-black uppercase tracking-wider text-white">{s.playerName || 'PLAYER'}</span>
-                            <span className="text-[10px] uppercase tracking-widest text-[#35ebeb]/80">{formatDate(s.savedAt)}</span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 gap-3">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[#353535] bg-[#0f0f0f]">
+                            <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
                           </div>
-                          <div className="mt-1 text-[10px] uppercase tracking-widest text-[#e2e2e2]/70">
-                            {sceneTitle.replace('{{name}}', s.playerName)}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                              <span className="text-sm font-black uppercase tracking-wider text-white">{s.playerName || 'PLAYER'}</span>
+                              <span className="text-[10px] uppercase tracking-widest text-[#35ebeb]/80">{formatDate(s.savedAt)}</span>
+                            </div>
+                            <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#e2e2e2]/70">
+                              {s.areaLabel ? s.areaLabel : `00X${s.sceneId.toUpperCase()}`}
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-2">
+                              {s.note ? (
+                                <div className="text-xs font-bold normal-case tracking-normal text-[#ffaaf6]">&ldquo;{s.note}&rdquo;</div>
+                              ) : (
+                                <div className="text-[10px] uppercase tracking-widest text-[#e2e2e2]/40">No checkpoint note</div>
+                              )}
+                              <button
+                                type="button"
+                                onMouseEnter={hoverUi}
+                                onClick={() => (isEditing ? cancelEdit() : beginEdit(s))}
+                                className="text-[#ffaaf6]/80 hover:text-[#ffaaf6]"
+                                aria-label={isEditing ? 'Cancel note edit' : 'Edit checkpoint note'}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            </div>
                           </div>
-                          {s.note ? (
-                            <div className="mt-2 text-xs font-bold normal-case tracking-normal text-[#ffaaf6]">&ldquo;{s.note}&rdquo;</div>
-                          ) : (
-                            <div className="mt-2 text-[10px] uppercase tracking-widest text-[#e2e2e2]/40">No checkpoint note</div>
-                          )}
                         </div>
+
                         <div className="flex shrink-0 flex-wrap items-center gap-2">
                           <button
                             type="button"
@@ -130,15 +181,6 @@ export default function LoadGameModal({
                             className="border-2 border-[#35ebeb] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"
                           >
                             Load
-                          </button>
-                          <button
-                            type="button"
-                            onMouseEnter={hoverUi}
-                            onClick={() => (isEditing ? cancelEdit() : beginEdit(s))}
-                            className="border-2 border-[#ffaaf6]/70 p-2 text-[#ffaaf6] hover:bg-[#ffaaf6]/15"
-                            aria-label={isEditing ? 'Cancel note edit' : 'Edit checkpoint note'}
-                          >
-                            <Pencil size={16} />
                           </button>
                           <button
                             type="button"
@@ -191,7 +233,7 @@ export default function LoadGameModal({
             <button
               type="button"
               onMouseEnter={hoverUi}
-              onClick={onClose}
+              onClick={tryClose}
               className="mt-4 w-full shrink-0 border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020] sm:mt-6"
             >
               CANCEL

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { audioService } from '../lib/audioService';
+import { DEFAULT_HELP_TEXT } from '../lib/helpText';
 
 export type InfoModalKind = 'reboot' | 'help';
 
@@ -21,11 +22,12 @@ interface InfoModalProps {
   onClose: () => void;
   /** Called when user confirms SYSTEM_REBOOT (before/after close — use to return to title). */
   onRebootConfirm?: () => void;
+  helpBody?: string;
 }
 
-export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalProps) {
+export default function InfoModal({ kind, onClose, onRebootConfirm, helpBody }: InfoModalProps) {
   if (!kind) return null;
-  const content = COPY[kind];
+  const content = kind === 'help' ? { ...COPY.help, body: helpBody || DEFAULT_HELP_TEXT } : COPY[kind];
   const hoverUi = () => audioService.playHoverThrottled();
 
   const handleAcknowledge = () => {
@@ -64,6 +66,7 @@ export default function InfoModal({ kind, onClose, onRebootConfirm }: InfoModalP
         <p className="text-sm leading-relaxed text-[#e2e2e2]/90">{content.body}</p>
         <button
           type="button"
+          autoFocus
           onMouseEnter={hoverUi}
           onClick={handleAcknowledge}
           className="mt-8 w-full border-2 border-[#35ebeb] py-3 text-xs font-black uppercase tracking-widest text-[#35ebeb] hover:bg-[#35ebeb] hover:text-[#002020]"

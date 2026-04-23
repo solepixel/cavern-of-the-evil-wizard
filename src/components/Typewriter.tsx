@@ -40,6 +40,33 @@ function highlightAllCapsWords(parts: (string | React.ReactNode)[]): (string | R
   return out;
 }
 
+/** Explicit authoring marker: `[[TEXT]]` => highlighted `TEXT` (brackets removed). */
+function highlightBracketMarkers(parts: (string | React.ReactNode)[]): (string | React.ReactNode)[] {
+  const out: (string | React.ReactNode)[] = [];
+  let key = 0;
+  parts.forEach((part) => {
+    if (typeof part !== 'string') {
+      out.push(part);
+      return;
+    }
+    const segments = part.split(/(\[\[[^[\]]+\]\])/g);
+    segments.forEach((seg, si) => {
+      if (!seg) return;
+      const m = seg.match(/^\[\[([^[\]]+)\]\]$/);
+      if (m) {
+        out.push(
+          <span key={`mark-${key++}-${si}`} className="font-black text-[#ffaaf6]">
+            {m[1]}
+          </span>,
+        );
+      } else {
+        out.push(seg);
+      }
+    });
+  });
+  return out;
+}
+
 export default function Typewriter({
   text,
   speed = 20,
@@ -132,7 +159,7 @@ export default function Typewriter({
     if (disableInlineHighlights) {
       return content;
     }
-    let result: (string | React.ReactNode)[] = [content];
+    let result: (string | React.ReactNode)[] = highlightBracketMarkers([content]);
 
     const sortedItems = Object.values(ITEMS).sort((a, b) => b.name.length - a.name.length);
 

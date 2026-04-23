@@ -1,18 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { motion } from 'motion/react';
 import * as LucideIcons from 'lucide-react';
 
 const NARROW_MOBILE = '(max-width: 767px)';
 
 interface InventoryAnimationProps {
+  itemId?: string;
   itemName: string;
   iconName?: string;
+  target?: 'inventory' | 'equipment';
+  startDelayMs?: number;
   onComplete: () => void;
 }
 
-export default function InventoryAnimation({ itemName, iconName, onComplete }: InventoryAnimationProps) {
+const ICON_ALIASES: Record<string, string> = {
+  Shoe: 'Footprints',
+};
+
+export default function InventoryAnimation({
+  itemId,
+  itemName,
+  iconName,
+  target = 'inventory',
+  startDelayMs = 0,
+  onComplete,
+}: InventoryAnimationProps) {
   const [narrow, setNarrow] = useState(false);
+  const [phase, setPhase] = useState<'pre' | 'reveal' | 'fly'>('pre');
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   useEffect(() => {
     const mq = window.matchMedia(NARROW_MOBILE);
     const sync = () => setNarrow(mq.matches);
@@ -21,76 +41,88 @@ export default function InventoryAnimation({ itemName, iconName, onComplete }: I
     return () => mq.removeEventListener('change', sync);
   }, []);
 
-  const Resolved =
-    iconName && iconName in LucideIcons
-      ? (LucideIcons as Record<string, React.ComponentType<{ size?: number; className?: string }>>)[iconName]
-      : undefined;
-  const Icon = typeof Resolved === 'function' ? Resolved : LucideIcons.Package;
+  useEffect(() => {
+    const revealTimer = window.setTimeout(() => {
+      requestAnimationFrame(() => setPhase('reveal'));
+    }, Math.max(0, startDelayMs));
+    const flyTimer = window.setTimeout(() => setPhase('fly'), Math.max(0, startDelayMs) + 430);
+    const doneTimer = window.setTimeout(() => onCompleteRef.current(), Math.max(0, startDelayMs) + 1560);
+    return () => {
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(flyTimer);
+      window.clearTimeout(doneTimer);
+    };
+  }, [startDelayMs]);
+
+  const resolvedIconName = iconName ? ICON_ALIASES[iconName] ?? iconName : undefined;
+  const Candidate = resolvedIconName ? (LucideIcons as any)[resolvedIconName] : undefined;
+  const Icon = ((Candidate ?? LucideIcons.Package) as React.ComponentType<{ size?: number; className?: string }>) as React.ComponentType<{
+    size?: number;
+    className?: string;
+  }>;
   const iconSize = narrow ? 44 : 76;
-  const flyScale = narrow ? ([0.55, 0.92, 0.85, 0.72] as const) : ([0.6, 1.15, 1.05, 0.9] as const);
-  const flyX = narrow ? (['-50%', '-50%', '10vw', '12vw'] as const) : (['-50%', '-50%', '36vw', '40vw'] as const);
-  const flyY = narrow ? (['42vh', '8vh', '6vh', '6vh'] as const) : (['45vh', '0vh', '0vh', '0vh'] as const);
+
+  const motionStyles = useMemo(() => {
+    const revealTransform = 'translate(-50%, -54%) scale(1)';
+    const xDelta = target === 'equipment' ? (narrow ? '-42vw' : '-38vw') : narrow ? '42vw' : '38vw';
+    const yDelta = narrow ? '-38vh' : '-42vh';
+    const flyTransform = `translate(calc(-50% + ${xDelta}), calc(-50% + ${yDelta})) scale(0)`;
+    if (phase === 'pre') {
+      return {
+        transform: 'translate(-50%, -48%) scale(0.9)',
+        opacity: 0,
+        transition: 'opacity 220ms ease-in-out, transform 220ms ease-in-out',
+      };
+    }
+    if (phase === 'reveal') {
+      return {
+        transform: revealTransform,
+        opacity: 1,
+        transition: 'opacity 260ms ease-in-out, transform 260ms ease-in-out',
+      };
+    }
+    return {
+      transform: flyTransform,
+      opacity: 0,
+      transition: 'opacity 1080ms ease-in-out, transform 1080ms ease-in-out',
+    };
+  }, [narrow, phase, target]);
+
+  const overlayOpacity = phase === 'fly' ? 0 : 0.55;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[120] pointer-events-none"
-    >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.55, 0.55, 0] }}
-        transition={{ duration: 1.7, times: [0, 0.2, 0.75, 1], ease: 'easeInOut' }}
-        className="absolute inset-0 bg-black"
+    <div className="fixed inset-0 z-[120] pointer-events-none">
+      <div
+        className="absolute inset-0 bg-black transition-opacity duration-300 ease-in-out"
+        style={{ opacity: overlayOpacity }}
       />
 
-      <motion.div
-        initial={{ scale: narrow ? 0.55 : 0.6, opacity: 0, x: '-50%', y: narrow ? '42vh' : '45vh', left: '50%', top: '50%' }}
-        animate={{
-          scale: [...flyScale],
-          opacity: [0, 1, 1, 0],
-          x: [...flyX],
-          y: [...flyY],
-        }}
-        transition={{
-          duration: 1.7,
-          times: [0, 0.25, 0.75, 1],
-          ease: [0.22, 0.99, 0.36, 1],
-        }}
-        onAnimationComplete={onComplete}
-        className={clsx('absolute flex flex-col items-center', narrow ? 'gap-2' : 'gap-3')}
+      <div
+        data-item-id={itemId}
+        className={clsx('absolute left-1/2 top-1/2 flex flex-col items-center', narrow ? 'gap-2' : 'gap-3')}
+        style={motionStyles}
       >
         <div
           className={clsx(
-            'relative border-4 border-[#ffaaf6] bg-[#131313]',
-            narrow ? 'p-4 shadow-[0_0_32px_rgba(255,170,246,0.45)]' : 'p-7 shadow-[0_0_60px_rgba(255,170,246,0.55)]',
+            'relative border-4 border-[#35ebeb] bg-[#131313]',
+            narrow ? 'p-4 shadow-[0_0_32px_rgba(53,235,235,0.45)]' : 'p-7 shadow-[0_0_60px_rgba(53,235,235,0.55)]',
           )}
         >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0.15, 0.3, 0.15] }}
-            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 bg-[#ffaaf6]/10"
-          />
-          <Icon size={iconSize} className="relative z-10 text-[#ffaaf6]" />
+          <div className="absolute inset-0 bg-[#35ebeb]/10" />
+          <Icon size={iconSize} className="relative z-10 text-[#35ebeb]" />
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: [0, 1, 1, 0], y: [8, 0, 0, 0] }}
-          transition={{ duration: 1.7, times: [0, 0.25, 0.75, 1], ease: 'easeOut' }}
+        <div
           className={clsx(
-            'bg-[#ffaaf6] text-center font-black uppercase text-[#131313] shadow-xl',
+            'bg-[#35ebeb] text-center font-black uppercase text-[#131313] shadow-xl',
             narrow
               ? 'max-w-[min(92vw,20rem)] px-3 py-1.5 text-xs leading-snug tracking-[0.12em]'
               : 'max-w-[min(92vw,24rem)] px-5 py-2 text-xl tracking-[0.2em]',
           )}
         >
           {itemName} ACQUIRED
-        </motion.div>
-      </motion.div>
-    </motion.div>
+        </div>
+      </div>
+    </div>
   );
 }

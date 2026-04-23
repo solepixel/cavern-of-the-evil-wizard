@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { motion, LayoutGroup } from 'motion/react';
 import { Scene } from '../types';
 import { audioService } from '../lib/audioService';
 import { CUTSCENE_HANDOFF_DELAY_MS, cutsceneEase, cutsceneImageMotion } from '../lib/cutsceneTransition';
 
-/** When side panels are shown (`App` `uiVisible`): match main column between `w-64` / `w-80` rails. */
+/**
+ * When side panels are shown (`App` `uiVisible`): match the main column only (same as gameplay viewport).
+ * Explicit width avoids `layoutId` + `fixed` measuring full viewport and covering the inventory rail.
+ */
 const HANDOFF_VIEWPORT_CHROMED =
-  'max-lg:inset-x-0 lg:left-64 lg:right-80 lg:w-auto';
+  'max-lg:inset-x-0 max-lg:w-full lg:left-64 lg:right-auto lg:w-[calc(100vw-16rem-20rem)] lg:max-w-[calc(100vw-16rem-20rem)]';
 
 /** When chrome is hidden (e.g. intro): main is full width — handoff must not inset for absent sidebars. */
 const HANDOFF_VIEWPORT_FULL = 'inset-x-0';
@@ -43,6 +46,14 @@ export default function Cutscene({ scene, onChoice, gameChromeVisible }: Cutscen
   const handoffHorizontal =
     gameChromeVisible ? HANDOFF_VIEWPORT_CHROMED : HANDOFF_VIEWPORT_FULL;
 
+  const borderSettleSec = 0.55;
+
+  // If we chain multiple cutscenes, ensure local transition state resets per scene.
+  useEffect(() => {
+    setIsTransitioning(false);
+    setSelectedChoiceIndex(null);
+  }, [scene.id]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -67,29 +78,47 @@ export default function Cutscene({ scene, onChoice, gameChromeVisible }: Cutscen
             isTransitioning ? 'px-0 py-0' : 'justify-center px-4 py-6 md:px-8'
           } ${isTransitioning ? 'justify-between' : ''}`}
         >
-          {/* PANEL_01 — `layoutId` must live on this bordered node so the shell isn’t left at z-[70] after the image flies to gameplay. */}
+          {/* `PANEL_NN` from `scene.cutscenePanelOrdinal` — `layoutId` must live on this bordered node so the shell isn’t left at z-[70] after the image flies to gameplay. */}
           <motion.div
             layout={false}
             layoutId={handoffLayoutId}
             initial={false}
             animate={{
-              filter: isTransitioning ? 'blur(0px) brightness(1)' : `blur(${blurIdlePx}px) brightness(0.52)`,
-              scale: isTransitioning ? 1 : scaleIdle,
+              borderWidth: isTransitioning ? 0 : 8,
+              boxShadow: isTransitioning ? '0 0 0 rgba(0,0,0,0)' : '0 0 50px rgba(255,255,255,0.2)',
             }}
             transition={{
               layout: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
-              filter: { duration: blurClearSec, ease: imageEase },
-              scale: { duration: blurClearSec, ease: imageEase },
+              borderWidth: { duration: borderSettleSec, ease: copyEase },
+              boxShadow: { duration: borderSettleSec, ease: copyEase },
+            }}
+            style={{
+              borderStyle: 'solid',
+              borderColor: '#ffffff',
             }}
             className={clsx(
-              'relative z-[70] overflow-hidden border-8 border-[#ffffff] shadow-[0_0_50px_rgba(255,255,255,0.2)]',
+              'relative z-[70] overflow-hidden',
               isTransitioning
                 ? ['fixed top-0 z-[75] h-[50svh] max-w-none rounded-none', handoffHorizontal]
                 : 'mx-auto aspect-[21/9] w-full max-w-4xl rounded-sm',
             )}
           >
             {visualSrc ? (
-              <img src={visualSrc} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
+              <motion.img
+                src={visualSrc}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                referrerPolicy="no-referrer"
+                initial={false}
+                animate={{
+                  filter: isTransitioning ? 'blur(0px) brightness(1)' : `blur(${blurIdlePx}px) brightness(0.52)`,
+                  scale: isTransitioning ? 1 : scaleIdle,
+                }}
+                transition={{
+                  filter: { duration: blurClearSec, ease: imageEase },
+                  scale: { duration: blurClearSec, ease: imageEase },
+                }}
+              />
             ) : (
               <div className="absolute inset-0 bg-[#1b1b1b]/90 backdrop-blur-sm" />
             )}
@@ -114,7 +143,7 @@ export default function Cutscene({ scene, onChoice, gameChromeVisible }: Cutscen
               animate={{ opacity: isTransitioning ? 0 : 1, x: isTransitioning ? -8 : 0 }}
               transition={{ duration: 0.38, ease: copyEase }}
             >
-              PANEL_01 // DECISION_POINT
+              PANEL_{String(scene.cutscenePanelOrdinal ?? 1).padStart(2, '0')} // DECISION_POINT
             </motion.div>
             <motion.div
               className="absolute bottom-0 right-0 z-20 bg-[#35ebeb] px-4 py-1 text-xs font-black uppercase tracking-widest text-[#000000]"

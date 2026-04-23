@@ -2,7 +2,8 @@
  * Shared timings for cutscene → gameplay handoffs and future decision-point scenes.
  * Keep `HANDOFF_DELAY_MS` in sync with the longest visible motion in `Cutscene.tsx`.
  */
-export const CUTSCENE_HANDOFF_DELAY_MS = 2200;
+// Shorter handoff feels snappier; keep in sync with Cutscene choice/panel exit timing.
+export const CUTSCENE_HANDOFF_DELAY_MS = 1400;
 
 export const cutsceneEase = {
   /** Image de-blur / panel settle */

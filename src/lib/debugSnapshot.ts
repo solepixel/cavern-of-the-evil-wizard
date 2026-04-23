@@ -2,6 +2,7 @@ import { GameState } from '../types';
 import { SCENES, OBJECTS, ITEMS } from '../gameData';
 import { resolveObjectInteraction } from './gameEngine';
 import { formatObjectStateForDisplay, serializeObjectAxes } from './objectState';
+import { getSceneAreaDisplayLabel } from './sceneAreaLabel';
 
 export type DebugObjectInteractions = {
   objectId: string;
@@ -28,6 +29,7 @@ export function buildGameplayDebugSnapshot(state: GameState): {
   const sceneExists = Boolean(scene);
 
   const character = [
+    `areaLabel: ${getSceneAreaDisplayLabel(state, state.currentSceneId)}`,
     `playerName: ${state.playerName || '(empty)'}`,
     `hp: ${state.hp} / ${state.maxHp}`,
     `score: ${state.score ?? 0}`,
@@ -41,6 +43,7 @@ export function buildGameplayDebugSnapshot(state: GameState): {
     `namingPhase: ${state.namingPhase}`,
     `isGameOver: ${state.isGameOver}`,
     `pendingItem: ${state.pendingItem ?? '(none)'}`,
+    `pendingItemQueue: ${(state.pendingItemQueue ?? []).length ? (state.pendingItemQueue ?? []).map((x) => `${x.id}:${x.target}`).join(', ') : '(empty)'}`,
   ];
 
   const inventoryLines =

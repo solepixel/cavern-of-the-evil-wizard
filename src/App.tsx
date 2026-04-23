@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import clsx from 'clsx';
 import {
@@ -21,12 +21,22 @@ import {
   PackageOpen,
   Menu,
   X,
+  HardHat,
+  Shirt,
+  Hand,
+  PersonStanding,
+  Footprints,
+  Sword,
+  Boxes,
+  ChevronDown,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { GameState, Scene } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
 import {
   processCommand,
+  equipItemFromInventory,
+  deriveEquippedSlots,
   loadGame,
   loadSaveSlot,
   deleteSaveSlot,
@@ -48,8 +58,13 @@ import SettingsModal from './components/SettingsModal';
 import InfoModal, { InfoModalKind } from './components/InfoModal';
 import DevDebugModal from './components/DevDebugModal';
 import LoadGameModal from './components/LoadGameModal';
+import EquippedStatusModal from './components/EquippedStatusModal.tsx';
 import { audioService, loadAudioPreferences, saveAudioPreferences } from './lib/audioService';
-import { getObjectAxes, resolveObjectDescription } from './lib/objectState';
+import { getSceneAreaDisplayLabel } from './lib/sceneAreaLabel';
+import AvatarPickerModal from './components/AvatarPickerModal';
+import { StoredLocalAvatar, clearLocalAvatar, imageToPixelAvatarDataUrl, loadLocalAvatar, saveLocalAvatar } from './lib/localAvatar';
+import { DicebearProfile, buildDicebearAvatarUrl, loadDicebearProfile, saveDicebearProfile } from './lib/dicebearAvatar';
+import { getHelpText } from './lib/helpText';
 
 const initialAudioPrefs = loadAudioPreferences();
 
@@ -76,12 +91,10 @@ function getSceneInteractionLabels(scene: Scene): string[] {
   });
 }
 
-function getSceneObjectRows(scene: Scene, state: GameState) {
+function getSceneObjectRows(scene: Scene) {
   return (scene.objects ?? []).map((oid) => {
     const obj = OBJECTS[oid];
     const name = (obj?.name ?? oid).toUpperCase();
-    const axes = obj ? getObjectAxes(state, oid, obj) : {};
-    const desc = (obj ? resolveObjectDescription(obj, axes) : '') ?? '';
 
     // Lightweight icon mapping (fallback: Package)
     const iconById: Record<string, keyof typeof LucideIcons> = {
@@ -104,7 +117,7 @@ function getSceneObjectRows(scene: Scene, state: GameState) {
       size?: number;
     }>;
 
-    return { id: oid, name, desc, Icon };
+    return { id: oid, name, Icon };
   });
 }
 
@@ -121,6 +134,44 @@ function isActivePendingPrompt(pending: GameState['pendingPrompt']): boolean {
   return true;
 }
 
+function hasAnyEquippableItem(state: GameState): boolean {
+  for (const id of state.inventory ?? []) {
+    const it = ITEMS[id];
+    if (!it) continue;
+    if (it.itemType === 'gear' || it.itemType === 'weapon' || it.equippable) return true;
+  }
+  return false;
+}
+
+function hasAnyWeaponItem(state: GameState): boolean {
+  const equipped = new Set(state.equippedItemIds ?? []);
+  for (const id of [...(state.inventory ?? []), ...equipped]) {
+    const it = ITEMS[id];
+    if (it?.itemType === 'weapon') return true;
+  }
+  return false;
+}
+
+function hasAnyHeadItem(state: GameState): boolean {
+  const equipped = new Set(state.equippedItemIds ?? []);
+  for (const id of [...(state.inventory ?? []), ...equipped]) {
+    const it = ITEMS[id];
+    if (!it) continue;
+    if ((it.gearSlot ?? it.equipmentSlot) === 'head') return true;
+  }
+  return false;
+}
+
+function hasAnyHandsItem(state: GameState): boolean {
+  const equipped = new Set(state.equippedItemIds ?? []);
+  for (const id of [...(state.inventory ?? []), ...equipped]) {
+    const it = ITEMS[id];
+    if (!it) continue;
+    if ((it.gearSlot ?? it.equipmentSlot) === 'hands') return true;
+  }
+  return false;
+}
+
 function getCommandSuggestions(params: {
   input: string;
   scene: Scene;
@@ -128,7 +179,7 @@ function getCommandSuggestions(params: {
 }): string[] {
   const raw = params.input.trimStart();
   const q = raw.toLowerCase();
-  if (!q) return [];
+  if (!q || q.length > 40) return [];
 
   const scene = params.scene;
   const objs = (scene.objects ?? []).map((oid) => {
@@ -137,26 +188,6 @@ function getCommandSuggestions(params: {
   });
 
   const suggestions = new Set<string>();
-
-  const allowSuggestion = (candidate: string): boolean => {
-    const c = candidate.toLowerCase();
-    for (const oid of scene.objects ?? []) {
-      const obj = OBJECTS[oid];
-      if (!obj) continue;
-      for (const it of obj.interactions ?? []) {
-        const auto = it.autoComplete !== false;
-        try {
-          const re = new RegExp(`^${it.regex}$`, 'i');
-          if (re.test(c)) {
-            return auto;
-          }
-        } catch {
-          // ignore invalid regex
-        }
-      }
-    }
-    return true;
-  };
 
   // Common verbs
   ['look', 'inventory', 'map', 'help', 'examine self'].forEach((c) => suggestions.add(c));
@@ -210,17 +241,22 @@ function getCommandSuggestions(params: {
   }
 
   // Filter
-  const filtered = Array.from(suggestions).filter((s) => s.toLowerCase().startsWith(q) && allowSuggestion(s));
+  const filtered = Array.from(suggestions).filter((s) => s.toLowerCase().startsWith(q));
   filtered.sort((a, b) => a.length - b.length);
-  return filtered.slice(0, 8);
+  return filtered.slice(0, 5);
 }
 
 export default function App() {
   const hoverUi = () => audioService.playHoverThrottled();
 
   const [state, setState] = useState<GameState>(INITIAL_STATE);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [localAvatar, setLocalAvatar] = useState(() => loadLocalAvatar());
+  const [draftAvatar, setDraftAvatar] = useState<StoredLocalAvatar | null>(() => loadLocalAvatar());
+  const [dicebearProfile, setDicebearProfile] = useState<DicebearProfile>(() => loadDicebearProfile());
   const [inputValue, setInputValue] = useState('');
   const [skipTypewriter, setSkipTypewriter] = useState(false);
+  const [commandSuggestions, setCommandSuggestions] = useState<string[]>([]);
   const [ambientVolume, setAmbientVolume] = useState(initialAudioPrefs.ambientVolume);
   const [sfxVolume, setSfxVolume] = useState(initialAudioPrefs.sfxVolume);
   const [isMuted, setIsMuted] = useState(initialAudioPrefs.muted);
@@ -232,7 +268,12 @@ export default function App() {
   const [sceneInteractionsVisible, setSceneInteractionsVisible] = useState(true);
   const [inventoryPanelExpanded, setInventoryPanelExpanded] = useState(true);
   const [sceneObjectsPanelExpanded, setSceneObjectsPanelExpanded] = useState(true);
+  const [activePickupAnimations, setActivePickupAnimations] = useState<
+    Array<{ key: string; id: string; target: 'inventory' | 'equipment'; startDelayMs: number }>
+  >([]);
+  const [pendingCutsceneState, setPendingCutsceneState] = useState<GameState | null>(null);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+  const [isEquippedModalOpen, setIsEquippedModalOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const isNarrowMobile = useIsNarrowMobile();
   /** Fixed side drawers on small screens (game stays full-width until opened). */
@@ -245,10 +286,6 @@ export default function App() {
   const historyNavOffsetRef = useRef(-1);
   const historyNavDraftRef = useRef<string | null>(null);
   const promptInputRef = useRef<HTMLInputElement>(null);
-  const caretMeasureRef = useRef<HTMLSpanElement>(null);
-  const [caretPos, setCaretPos] = useState(0);
-  const [cursorPixelLeft, setCursorPixelLeft] = useState(0);
-  const [promptFocused, setPromptFocused] = useState(false);
   /** Keyboard highlight row in the suggestion panel (-1 = none). */
   const [suggestionHighlight, setSuggestionHighlight] = useState(-1);
 
@@ -280,20 +317,44 @@ export default function App() {
   }, [state.gameStarted, state.namingPhase, isMuted]);
 
   useEffect(() => {
-    if (state.pendingItem) {
-      audioService.playSound('item');
-    }
-  }, [state.pendingItem]);
+    const queued = state.pendingItemQueue ?? [];
+    if (!queued.length) return;
+    setActivePickupAnimations((prev) => {
+      const offset = prev.length > 0 ? 300 : 0;
+      return [
+        ...prev,
+        ...queued.map((entry, idx) => ({
+          key: `${entry.id}-${entry.target}-${Date.now()}-${idx}-${Math.random().toString(16).slice(2, 8)}`,
+          id: entry.id,
+          target: entry.target,
+          startDelayMs: offset + idx * 300,
+        })),
+      ];
+    });
+    setState((prev) => ({ ...prev, pendingItemQueue: [], pendingItem: null }));
+    audioService.playSound('item');
+  }, [state.pendingItemQueue]);
 
   /** Mobile: show inventory drawer when a pickup animation runs so the new item is visible in context. */
   useEffect(() => {
-    if (!state.pendingItem || !isNarrowMobile || !state.uiVisible) return;
+    if (!activePickupAnimations.length || !isNarrowMobile || !state.uiVisible) return;
     setMobileLeftOpen(false);
     setMobileRightOpen(true);
-  }, [state.pendingItem, isNarrowMobile, state.uiVisible]);
+  }, [activePickupAnimations.length, isNarrowMobile, state.uiVisible]);
 
   useEffect(() => {
     loadGame();
+  }, []);
+
+  // Keep local avatar in sync if storage changes (multi-tab).
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || !e.key.startsWith('cavern_local_avatar')) return;
+      setLocalAvatar(loadLocalAvatar());
+      setDraftAvatar(loadLocalAvatar());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   /** Wall-clock deadline: expire without requiring another command. */
@@ -338,6 +399,50 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isSettingsOpen, infoModalKind]);
 
+  // Compute current scene early so hooks remain unconditional (no hooks after early returns).
+  const currentScene = SCENES[state.currentSceneId] ?? SCENES.cutscene_intro;
+
+  // Debounced / async-ish autocomplete so typing never blocks on regex scans.
+  useEffect(() => {
+    const inGameplay =
+      state.gameStarted && !state.namingPhase && !state.currentSceneId.startsWith('cutscene_') && state.uiVisible;
+    if (!inGameplay || state.isGameOver) {
+      setCommandSuggestions([]);
+      return;
+    }
+    const q = inputValue.trimStart();
+    if (!q) {
+      setCommandSuggestions([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      const next = getCommandSuggestions({
+        input: inputValue,
+        scene: currentScene,
+        state: {
+          inventory: state.inventory,
+          equippedItemIds: state.equippedItemIds,
+          currentSceneId: state.currentSceneId,
+          hasMap: state.hasMap,
+        } as any,
+      });
+      startTransition(() => setCommandSuggestions(next));
+    }, 320);
+    return () => window.clearTimeout(t);
+  }, [
+    inputValue,
+    currentScene,
+    state.inventory,
+    state.equippedItemIds,
+    state.currentSceneId,
+    state.hasMap,
+    state.gameStarted,
+    state.namingPhase,
+    state.currentSceneId,
+    state.uiVisible,
+    state.isGameOver,
+  ]);
+
   const isCutscene = Boolean(state.gameStarted && !state.namingPhase && state.currentSceneId.startsWith('cutscene_'));
   const [postCutsceneChromeKey, setPostCutsceneChromeKey] = useState(0);
   const cutsceneSweepRef = useRef(false);
@@ -368,10 +473,16 @@ export default function App() {
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
       if (lineIndex === state.history.length - 1) {
+        if (pendingCutsceneState) {
+          setState(pendingCutsceneState);
+          setPendingCutsceneState(null);
+          setSkipTypewriter(false);
+          return;
+        }
         setSkipTypewriter(true);
       }
     },
-    [state.history.length],
+    [pendingCutsceneState, state.history.length],
   );
 
   const handleSaveProgress = useCallback(() => {
@@ -385,6 +496,13 @@ export default function App() {
   const handleCommand = (e?: React.FormEvent, manualCommand?: string) => {
     if (e) e.preventDefault();
 
+    if (pendingCutsceneState) {
+      if (!skipTypewriter && state.history.length > 0) {
+        setSkipTypewriter(true);
+      }
+      return;
+    }
+
     if (!skipTypewriter && state.history.length > 0) {
       setSkipTypewriter(true);
       return;
@@ -395,7 +513,19 @@ export default function App() {
 
     audioService.playSound('click');
     const newState = processCommand(state, commandToProcess);
-    setState(newState);
+    const enteringCutscene =
+      !state.currentSceneId.startsWith('cutscene_') && newState.currentSceneId.startsWith('cutscene_');
+    const hasFreshNarrative = newState.history.length > state.history.length;
+    if (enteringCutscene && hasFreshNarrative) {
+      setPendingCutsceneState(newState);
+      setState({
+        ...newState,
+        currentSceneId: state.currentSceneId,
+      });
+    } else {
+      setPendingCutsceneState(null);
+      setState(newState);
+    }
     if (!manualCommand) {
       const trimmed = commandToProcess.trim();
       const hist = commandHistoryRef.current;
@@ -423,14 +553,50 @@ export default function App() {
     }
   };
 
-  const syncCaretFromPrompt = useCallback(() => {
-    const el = promptInputRef.current;
-    if (el) setCaretPos(el.selectionStart ?? 0);
-  }, []);
+  const dicebearSeed = [state.playerName, ...(state.equippedItemIds ?? [])].join('|');
+  const avatarSrc =
+    localAvatar?.kind === 'photo'
+      ? localAvatar.dataUrl
+      : buildDicebearAvatarUrl(localAvatar?.kind === 'dicebear' ? localAvatar.seed : dicebearSeed, dicebearProfile);
 
-  useLayoutEffect(() => {
-    setCursorPixelLeft(caretMeasureRef.current?.offsetWidth ?? 0);
-  }, [inputValue, caretPos]);
+  const draftAvatarSrc =
+    draftAvatar?.kind === 'photo'
+      ? draftAvatar.dataUrl
+      : buildDicebearAvatarUrl(draftAvatar?.kind === 'dicebear' ? draftAvatar.seed : dicebearSeed, dicebearProfile);
+
+  const handlePickRandomAvatarDraft = () => {
+    const seed = `${state.playerName}-${Math.random().toString(16).slice(2, 10)}-${Date.now().toString(16)}`;
+    const next = { kind: 'dicebear' as const, seed };
+    setDraftAvatar(next);
+  };
+
+  const handleUsePhotoAvatarDraft = async (file: File) => {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image.'));
+      });
+      const dataUrl = await imageToPixelAvatarDataUrl({ image: img, pixelSize: 32, outputSize: 128, posterizeLevels: 6 });
+      const next = { kind: 'photo' as const, dataUrl };
+      setDraftAvatar(next);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const applyDraftAvatar = () => {
+    if (!draftAvatar) {
+      clearLocalAvatar();
+      setLocalAvatar(null);
+      return;
+    }
+    saveLocalAvatar(draftAvatar);
+    setLocalAvatar(draftAvatar);
+  };
 
   const applyPromptSuggestion = useCallback((text: string) => {
     setInputValue(text);
@@ -442,7 +608,6 @@ export default function App() {
       if (el) {
         const len = text.length;
         el.setSelectionRange(len, len);
-        setCaretPos(len);
       }
     });
   }, []);
@@ -526,6 +691,7 @@ export default function App() {
           kind={infoModalKind as InfoModalKind}
           onClose={() => setInfoModalKind(null)}
           onRebootConfirm={handleRebootConfirm}
+          helpBody={getHelpText(currentScene)}
         />
       )}
     </>
@@ -535,6 +701,7 @@ export default function App() {
     <LoadGameModal
       isOpen={isLoadModalOpen}
       slots={saveSlots}
+      dicebearProfile={dicebearProfile}
       onClose={() => setIsLoadModalOpen(false)}
       onLoad={(slotId) => {
         const loaded = loadSaveSlot(slotId);
@@ -553,6 +720,55 @@ export default function App() {
         updateSaveSlotNote(slotId, note);
         setSaveSlots(listSaveSlots());
       }}
+    />
+  );
+
+  const { gear: equippedGear, weapons: equippedWeapons } = deriveEquippedSlots(state);
+  const showEquippedHud = hasAnyEquippableItem(state);
+  const showHeadSlot = hasAnyHeadItem(state);
+  const showWeaponSlots = hasAnyWeaponItem(state);
+  const showHandsSlot = hasAnyHandsItem(state);
+  const slotHasAvailableGear = {
+    head: state.inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === 'head';
+    }),
+    torso: state.inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === 'torso';
+    }),
+    hands: state.inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === 'hands';
+    }),
+    legs: state.inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === 'legs';
+    }),
+    feet: state.inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === 'feet';
+    }),
+  };
+  const equippedModal = (
+    <EquippedStatusModal
+      isOpen={isEquippedModalOpen}
+      onClose={() => setIsEquippedModalOpen(false)}
+      gear={equippedGear}
+      weapons={equippedWeapons}
+      inventory={state.inventory}
+      equippedItemIds={state.equippedItemIds ?? []}
+      onEquipItem={(itemId) => setState((prev) => equipItemFromInventory(prev, itemId))}
     />
   );
 
@@ -589,6 +805,59 @@ export default function App() {
           : undefined
       }
     />
+  );
+
+  const mainFooter = (
+    <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
+      <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center justify-between gap-3 md:block">
+          <div className="truncate text-left text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
+          {isNarrowMobile && (
+            <button
+              type="button"
+              onMouseEnter={hoverUi}
+              onClick={() => {
+                setMobileLeftOpen(false);
+                setMobileRightOpen(false);
+                setIsSettingsOpen(true);
+              }}
+              className="shrink-0 rounded-full p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] lg:hidden"
+              aria-label="Open settings"
+            >
+              <CogIcon size={18} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+        <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
+          <div className="group flex items-center gap-2">
+            <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
+              {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={ambientVolume}
+              onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
+              className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30 md:w-20"
+              aria-label="Volume"
+            />
+          </div>
+          <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
+            SYSTEM_REBOOT
+          </button>
+          {isDevDebugUi && (
+            <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
+              DATA_LOG
+            </button>
+          )}
+          <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
+            HELP
+          </button>
+        </div>
+      </div>
+    </footer>
   );
 
   if (!state.gameStarted && !state.namingPhase) {
@@ -660,35 +929,12 @@ export default function App() {
             </div>
           </motion.div>
 
-          <footer className="fixed bottom-0 z-30 w-full border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-4 md:py-3">
-            <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between md:gap-y-2">
-              <div className="truncate text-center md:text-left">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-              <div className="hidden flex-wrap items-center justify-center gap-x-6 gap-y-2 md:flex md:justify-end md:gap-8">
-                <div className="group flex items-center gap-2">
-                  <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
-                    {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
-                  </button>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={ambientVolume}
-                    onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-                    className="h-1 w-20 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] md:w-24 group-hover:bg-[#35ebeb]/30"
-                    aria-label="Volume"
-                  />
-                </div>
-                <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
-                  SYSTEM_REBOOT
-                </button>
-              </div>
-            </div>
-          </footer>
         </div>
         {infoModal}
         {loadModal}
+        {equippedModal}
         {settingsModal}
+        <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
       </>
     );
   }
@@ -708,19 +954,19 @@ export default function App() {
         </button>
         {infoModal}
         {loadModal}
+        {equippedModal}
         {settingsModal}
+        <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
       </>
     );
   }
 
-  const currentScene = SCENES[state.currentSceneId];
   const deadlineSecondsLeft =
     state.deadlineAtMs && !state.isGameOver && state.currentSceneId === state.deadlineSceneId
       ? Math.max(0, Math.ceil((state.deadlineAtMs - Date.now()) / 1000))
       : null;
   const interactionLabels = getSceneInteractionLabels(currentScene);
-  const sceneObjectRows = getSceneObjectRows(currentScene, state);
-  const commandSuggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+  const sceneObjectRows = getSceneObjectRows(currentScene);
   const awaitingPromptResponse = isActivePendingPrompt(state.pendingPrompt);
   const focusedGlowLabel = getFocusedGlowLabel(state);
   const suggestionActiveIndex =
@@ -728,7 +974,7 @@ export default function App() {
 
   const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (state.isGameOver) return;
-    const suggestions = getCommandSuggestions({ input: inputValue, scene: currentScene, state });
+    const suggestions = commandSuggestions;
 
     if (suggestions.length > 0 && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
@@ -794,7 +1040,6 @@ export default function App() {
         if (el) {
           const len = next.length;
           el.setSelectionRange(len, len);
-          setCaretPos(len);
         }
       });
       return;
@@ -810,7 +1055,6 @@ export default function App() {
         const el = promptInputRef.current;
         if (el) {
           el.setSelectionRange(draft.length, draft.length);
-          setCaretPos(draft.length);
         }
       });
       return;
@@ -823,7 +1067,6 @@ export default function App() {
       if (el) {
         const len = next.length;
         el.setSelectionRange(len, len);
-        setCaretPos(len);
       }
     });
   };
@@ -877,7 +1120,6 @@ export default function App() {
           <AnimatePresence>
             {isCutscene && (
               <Cutscene
-                key={state.currentSceneId}
                 scene={currentScene}
                 gameChromeVisible={state.uiVisible}
                 onChoice={(choice) => handleCommand(undefined, choice)}
@@ -886,13 +1128,18 @@ export default function App() {
           </AnimatePresence>
 
           <AnimatePresence>
-            {state.pendingItem && (
-              <InventoryAnimation
-                itemName={ITEMS[state.pendingItem].name}
-                iconName={ITEMS[state.pendingItem].icon}
-                onComplete={() => setState((prev) => ({ ...prev, pendingItem: null }))}
-              />
-            )}
+            {activePickupAnimations.map((anim) => (
+              <React.Fragment key={anim.key}>
+                <InventoryAnimation
+                  itemId={anim.id}
+                  itemName={ITEMS[anim.id].name}
+                  iconName={ITEMS[anim.id].icon}
+                  target={anim.target}
+                  startDelayMs={anim.startDelayMs}
+                  onComplete={() => setActivePickupAnimations((prev) => prev.filter((x) => x.key !== anim.key))}
+                />
+              </React.Fragment>
+            ))}
           </AnimatePresence>
 
         <div
@@ -933,15 +1180,18 @@ export default function App() {
                 )}
                 <div className="border-b-4 border-[#353535] p-6">
                   <div className="mb-2 flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535]">
-                      <img
-                        src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(
-                          [state.playerName, ...(state.equippedItemIds ?? [])].join('|'),
-                        )}`}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => {
+                        setDraftAvatar(localAvatar);
+                        setIsAvatarModalOpen(true);
+                      }}
+                      className="flex h-12 w-12 items-center justify-center overflow-hidden border-2 border-[#ffaaf6] bg-[#353535] hover:border-[#35ebeb]"
+                      aria-label="Change avatar"
+                    >
+                      <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+                    </button>
                     <div>
                       <div className="text-lg font-bold uppercase tracking-tighter text-[#ffaaf6]">{state.playerName}</div>
                       <div className="text-[10px] font-black text-[#35ebeb]">
@@ -955,6 +1205,94 @@ export default function App() {
                   <div className="mt-2 h-2 w-full bg-[#131313]">
                     <div className="h-full bg-[#35ebeb]" style={{ width: `${(state.hp / state.maxHp) * 100}%` }} />
                   </div>
+                  {showEquippedHud && (
+                    <div
+                      className={clsx(
+                        'mt-3 grid w-full gap-1',
+                        showWeaponSlots
+                          ? showHeadSlot
+                            ? showHandsSlot
+                              ? 'grid-cols-7'
+                              : 'grid-cols-6'
+                            : showHandsSlot
+                              ? 'grid-cols-6'
+                              : 'grid-cols-5'
+                          : showHeadSlot
+                            ? showHandsSlot
+                              ? 'grid-cols-5'
+                              : 'grid-cols-4'
+                            : showHandsSlot
+                              ? 'grid-cols-4'
+                              : 'grid-cols-3',
+                      )}
+                    >
+                      {[
+                        ...(showHeadSlot
+                          ? [
+                              {
+                                k: 'head',
+                                Icon: HardHat,
+                                on: Boolean(equippedGear.head),
+                                label: 'Head',
+                                alert: !equippedGear.head && slotHasAvailableGear.head,
+                              },
+                            ]
+                          : []),
+                        {
+                          k: 'torso',
+                          Icon: Shirt,
+                          on: Boolean(equippedGear.torso),
+                          label: 'Torso',
+                          alert: !equippedGear.torso && slotHasAvailableGear.torso,
+                        },
+                        ...(showHandsSlot
+                          ? [
+                              {
+                                k: 'hands',
+                                Icon: Hand,
+                                on: Boolean(equippedGear.hands),
+                                label: 'Hands',
+                                alert: !equippedGear.hands && slotHasAvailableGear.hands,
+                              },
+                            ]
+                          : []),
+                        {
+                          k: 'legs',
+                          Icon: PersonStanding,
+                          on: Boolean(equippedGear.legs),
+                          label: 'Legs',
+                          alert: !equippedGear.legs && slotHasAvailableGear.legs,
+                        },
+                        {
+                          k: 'feet',
+                          Icon: Footprints,
+                          on: Boolean(equippedGear.feet),
+                          label: 'Feet',
+                          alert: !equippedGear.feet && slotHasAvailableGear.feet,
+                        },
+                        ...(showWeaponSlots
+                          ? [
+                              { k: 'left', Icon: Sword, on: Boolean(equippedWeapons.left), label: 'Left hand', alert: false },
+                              { k: 'right', Icon: Sword, on: Boolean(equippedWeapons.right), label: 'Right hand', alert: false },
+                            ]
+                          : []),
+                      ].map(({ k, Icon, on, label, alert }) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onMouseEnter={hoverUi}
+                          onClick={() => setIsEquippedModalOpen(true)}
+                          className={clsx(
+                            'flex h-9 items-center justify-center border bg-[#131313] text-[#35ebeb] hover:bg-[#353535]/40',
+                            alert ? 'border-[#35ebeb]' : 'border-[#353535]',
+                          )}
+                          aria-label={`View equipped (${label})`}
+                        >
+                          <Icon size={16} className={on ? 'opacity-100' : 'opacity-30'} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <nav className="flex-1 py-4">
@@ -1083,7 +1421,7 @@ export default function App() {
               )}
 
               <div className="absolute right-4 top-4 border-l-4 border-[#35ebeb] bg-[#1b1b1b] px-3 py-1 text-[10px] font-bold uppercase text-[#35ebeb]">
-                AREA: 0x{state.currentSceneId.toUpperCase()}
+                AREA: {getSceneAreaDisplayLabel(state, state.currentSceneId)}
               </div>
 
               {state.isGameOver && (
@@ -1196,13 +1534,6 @@ export default function App() {
                   }}
                 >
                   <div className="relative flex min-w-0 items-center">
-                    <span
-                      ref={caretMeasureRef}
-                      aria-hidden
-                      className="invisible pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 whitespace-pre font-mono text-base font-bold uppercase leading-none tracking-wider"
-                    >
-                      {inputValue.slice(0, caretPos)}
-                    </span>
                     <input
                       ref={promptInputRef}
                       autoFocus={!isNarrowMobile}
@@ -1215,27 +1546,14 @@ export default function App() {
                         historyNavDraftRef.current = null;
                         setSuggestionHighlight(-1);
                         setInputValue(e.target.value);
-                        setCaretPos(e.target.selectionStart ?? 0);
                       }}
                       onKeyDown={handlePromptKeyDown}
-                      onKeyUp={syncCaretFromPrompt}
-                      onClick={syncCaretFromPrompt}
-                      onSelect={syncCaretFromPrompt}
-                      onFocus={() => setPromptFocused(true)}
-                      onBlur={() => setPromptFocused(false)}
-                      className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-[#35ebeb] caret-transparent placeholder:text-[#35ebeb]/30 focus:ring-0"
+                      className="relative z-10 w-full border-none bg-transparent py-0 font-mono text-base font-bold uppercase leading-none tracking-wider text-[#35ebeb] caret-[#35ebeb] placeholder:text-[#35ebeb]/30 focus:ring-0"
                       placeholder={
                         inputValue ? '' : awaitingPromptResponse ? 'ENTER RESPONSE...' : 'ENTER COMMAND...'
                       }
                       disabled={state.isGameOver}
                     />
-                    {promptFocused && !state.isGameOver && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute top-1/2 z-20 h-[1.15em] w-[0.55em] -translate-y-1/2 bg-[#35ebeb] cursor-blink"
-                        style={{ left: cursorPixelLeft }}
-                      />
-                    )}
                   </div>
 
                   {commandSuggestions.length > 0 && !state.isGameOver && (
@@ -1340,33 +1658,50 @@ export default function App() {
                         <Backpack size={18} /> INVENTORY
                       </span>
                       <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
-                        {inventoryPanelExpanded ? '−' : '+'}
+                        <ChevronDown size={16} className={clsx('transition-transform', !inventoryPanelExpanded && '-rotate-90')} />
                       </span>
                     </button>
                     {inventoryPanelExpanded && (
                       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                        {state.inventory.length > 0 ? (
-                          state.inventory.map((id) => {
-                            const iconKey = ITEMS[id].icon as keyof typeof LucideIcons | undefined;
-                            const Icon =
-                              (iconKey && (LucideIcons as any)[iconKey]
-                                ? ((LucideIcons as any)[iconKey] as React.ComponentType<{ size?: number }>)
-                                : (LucideIcons.Package as React.ComponentType<{ size?: number }>));
-                            return (
-                              <div
-                                key={id}
-                                className="group flex items-start gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 transition-all hover:bg-[#353535]"
-                              >
-                                <div className="mt-1 text-[#35ebeb]">
-                                  <Icon size={16} />
-                                </div>
-                                <div>
-                                  <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
-                                  <div className="mt-1 text-[10px] text-[#e2e2e2]/60">{ITEMS[id].description}</div>
-                                </div>
-                              </div>
-                            );
-                          })
+                        {state.inventory.filter((id) => {
+                          const it = ITEMS[id];
+                          const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
+                          return t === 'misc';
+                        }).length > 0 ? (
+                          <AnimatePresence initial={false}>
+                            {state.inventory
+                              .filter((id) => {
+                                const it = ITEMS[id];
+                                const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
+                                return t === 'misc';
+                              })
+                              .map((id) => {
+                                const iconKey = ITEMS[id].icon as keyof typeof LucideIcons | undefined;
+                                const Icon =
+                                  (iconKey && (LucideIcons as any)[iconKey]
+                                    ? ((LucideIcons as any)[iconKey] as React.ComponentType<{ size?: number }>)
+                                    : (LucideIcons.Package as React.ComponentType<{ size?: number }>));
+                                return (
+                                  <motion.button
+                                    layout
+                                    initial={{ opacity: 0, y: 4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -3, transition: { duration: 0.18, ease: [0.4, 0, 0.2, 1] } }}
+                                    transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                                    type="button"
+                                    key={id}
+                                    onMouseEnter={hoverUi}
+                                    onClick={() => handleCommand(undefined, `examine ${ITEMS[id].name}`)}
+                                    className="group flex w-full items-center gap-3 border-l-4 border-[#35ebeb] bg-[#131313] p-3 text-left transition-all hover:bg-[#353535]"
+                                  >
+                                    <div className="text-[#35ebeb]">
+                                      <Icon size={16} />
+                                    </div>
+                                    <div className="text-sm font-bold uppercase text-[#ffffff]">{ITEMS[id].name}</div>
+                                  </motion.button>
+                                );
+                              })}
+                          </AnimatePresence>
                         ) : (
                           <div className="text-[10px] italic uppercase tracking-widest text-[#e2e2e2]/40">
                             Inventory is empty...
@@ -1393,28 +1728,28 @@ export default function App() {
                         )}
                         aria-expanded={sceneObjectsPanelExpanded}
                       >
-                        <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#e2e2e2]/70">
-                          SCENE OBJECTS
+                        <span className="flex min-w-0 items-center gap-2 font-black uppercase tracking-widest text-[#ffaaf6]">
+                          <Boxes size={18} /> SCENE OBJECTS
                         </span>
                         <span className="shrink-0 font-mono text-xs font-black text-[#35ebeb]">
-                          {sceneObjectsPanelExpanded ? '−' : '+'}
+                          <ChevronDown size={16} className={clsx('transition-transform', !sceneObjectsPanelExpanded && '-rotate-90')} />
                         </span>
                       </button>
                       {sceneObjectsPanelExpanded && (
                         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-                          {sceneObjectRows.map(({ id, name, desc, Icon }) => (
-                            <div
+                          {sceneObjectRows.map(({ id, name, Icon }) => (
+                            <button
+                              type="button"
                               key={id}
-                              className="group flex items-start gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 transition-all hover:bg-[#202020]"
+                              onMouseEnter={hoverUi}
+                              onClick={() => handleCommand(undefined, `examine ${id.replace(/_/g, ' ')}`)}
+                              className="group flex w-full items-center gap-3 border-l-4 border-[#353535] bg-[#0f0f0f] p-3 text-left transition-all hover:bg-[#202020]"
                             >
-                              <div className="mt-1 text-[#e2e2e2]/60">
+                              <div className="text-[#e2e2e2]/60">
                                 <Icon size={16} />
                               </div>
-                              <div>
-                                <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
-                                <div className="mt-1 text-[10px] text-[#e2e2e2]/45">{desc}</div>
-                              </div>
-                            </div>
+                              <div className="text-sm font-bold uppercase text-[#e2e2e2]/90">{name}</div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -1437,57 +1772,32 @@ export default function App() {
         </LayoutGroup>
 
         {settingsModal}
+        {equippedModal}
+        <AvatarPickerModal
+          isOpen={isAvatarModalOpen}
+          onClose={() => {
+            setDraftAvatar(localAvatar);
+            setIsAvatarModalOpen(false);
+          }}
+          currentAvatarSrc={avatarSrc}
+          draftAvatarSrc={draftAvatarSrc}
+          isDirty={JSON.stringify(draftAvatar) !== JSON.stringify(localAvatar)}
+          onPickRandom={handlePickRandomAvatarDraft}
+          onUsePhoto={handleUsePhotoAvatarDraft}
+          onClearCustom={() => setDraftAvatar(null)}
+          onApply={() => {
+            applyDraftAvatar();
+            setIsAvatarModalOpen(false);
+          }}
+          dicebearProfile={dicebearProfile}
+          onDicebearProfileChange={(profile) => {
+            setDicebearProfile(profile);
+            saveDicebearProfile(profile);
+          }}
+          hasCustomAvatar={localAvatar?.kind === 'photo'}
+        />
 
-        <footer className="z-50 border-t-4 border-[#ffffff] bg-[#131313] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-[#ffaaf6] md:px-8 md:py-2">
-          <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center justify-between gap-3 md:block">
-              <div className="truncate text-left text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
-              {isNarrowMobile && (
-                <button
-                  type="button"
-                  onMouseEnter={hoverUi}
-                  onClick={() => {
-                    setMobileLeftOpen(false);
-                    setMobileRightOpen(false);
-                    setIsSettingsOpen(true);
-                  }}
-                  className="shrink-0 rounded-full p-2 text-[#35ebeb] hover:bg-[#35ebeb]/10 hover:text-[#ffffff] active:scale-[0.98] lg:hidden"
-                  aria-label="Open settings"
-                >
-                  <CogIcon size={18} strokeWidth={2} />
-                </button>
-              )}
-            </div>
-            <div className="hidden flex-wrap items-center justify-center gap-6 md:flex md:justify-end">
-              <div className="group flex items-center gap-2">
-                <button type="button" onMouseEnter={hoverUi} onClick={toggleMute} className="hover:text-[#35ebeb]" aria-label="Toggle mute">
-                  {isMuted ? <VolumeX size={14} /> : ambientVolume > 0.5 ? <Volume2 size={14} /> : <Volume1 size={14} />}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={ambientVolume}
-                  onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-                  className="h-1 w-16 cursor-pointer appearance-none bg-[#353535] accent-[#35ebeb] group-hover:bg-[#35ebeb]/30 md:w-20"
-                  aria-label="Volume"
-                />
-              </div>
-              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('reboot')}>
-                SYSTEM_REBOOT
-              </button>
-              {isDevDebugUi && (
-                <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('log')}>
-                  DATA_LOG
-                </button>
-              )}
-              <button type="button" onMouseEnter={hoverUi} className="hover:text-[#35ebeb]" onClick={() => setInfoModalKind('help')}>
-                HELP
-              </button>
-            </div>
-          </div>
-        </footer>
+        {mainFooter}
       </div>
       {infoModal}
       {loadModal}

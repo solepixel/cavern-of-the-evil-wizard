@@ -10,6 +10,10 @@ import {
 import { SCENES, ITEMS, OBJECTS, INITIAL_STATE, runSceneEnterHook } from '../gameData';
 import { audioService, saveAudioPreferences } from './audioService';
 import { SCORE_FIRST_ENTER_SCENE, SCORE_PICKUP_ITEM } from './gameScoring';
+import { getSceneAreaDisplayLabel } from './sceneAreaLabel';
+import { buildDicebearAvatarUrl, loadDicebearProfile } from './dicebearAvatar';
+import { loadLocalAvatar } from './localAvatar';
+import { getHelpText } from './helpText';
 import {
   DEFAULT_LEGACY_STATE_KEY,
   getObjectAxes,
@@ -25,6 +29,10 @@ export interface SaveSlotSummary {
   savedAt: number; // epoch ms
   sceneId: string;
   playerName: string;
+  /** Display-only: `{CC}X{SCENE}` at save time (helps debug & quick recognition). */
+  areaLabel?: string;
+  /** Snapshot avatar at save time (stable in Load dialog). */
+  avatarSrc?: string;
   /** User-editable label shown in the load dialog (optional). */
   note?: string;
 }
@@ -57,11 +65,18 @@ export function listSaveSlots(): SaveSlotSummary[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SaveSlotRecord[];
     return (parsed ?? [])
-      .map(({ id, savedAt, sceneId, playerName, note }) => ({
+      .map(({ id, savedAt, sceneId, playerName, note, areaLabel, avatarSrc, state }) => ({
         id,
         savedAt,
         sceneId,
         playerName,
+        areaLabel:
+          typeof areaLabel === 'string' && areaLabel.trim() !== ''
+            ? areaLabel.trim()
+            : state
+              ? getSceneAreaDisplayLabel(state, sceneId)
+              : undefined,
+        ...(typeof avatarSrc === 'string' && avatarSrc.trim() !== '' ? { avatarSrc: avatarSrc.trim() } : {}),
         ...(typeof note === 'string' && note.trim() !== '' ? { note: note.trim() } : {}),
       }))
       .sort((a, b) => b.savedAt - a.savedAt);
@@ -126,11 +141,20 @@ export function updateSaveSlotNote(id: string, note: string): boolean {
 function persistSaveSlot(state: GameState) {
   const now = Date.now();
   const id = `save_${now}_${Math.random().toString(16).slice(2)}`;
+  const localAvatar = loadLocalAvatar();
+  const profile = loadDicebearProfile();
+  const seedFromState = [state.playerName, ...(state.equippedItemIds ?? [])].join('|');
+  const avatarSrc =
+    localAvatar?.kind === 'photo'
+      ? localAvatar.dataUrl
+      : buildDicebearAvatarUrl(localAvatar?.kind === 'dicebear' ? localAvatar.seed : seedFromState, profile);
   const record: SaveSlotRecord = {
     id,
     savedAt: now,
     sceneId: state.currentSceneId,
     playerName: state.playerName,
+    areaLabel: getSceneAreaDisplayLabel(state, state.currentSceneId),
+    avatarSrc,
     state,
   };
   try {
@@ -308,6 +332,7 @@ function postCommandTurn(
 
 function migrateModernGameplayFields(state: GameState) {
   if (typeof state.score !== 'number' || Number.isNaN(state.score)) state.score = 0;
+  if (!Array.isArray(state.pendingItemQueue)) state.pendingItemQueue = [];
 }
 
 /**
@@ -331,6 +356,26 @@ function isBedroomDoorUnlocked(state: GameState): boolean {
   return (axes[lk] ?? door.initialState) === 'unlocked';
 }
 
+function getPlaypenSisterState(state: GameState): string {
+  const playpen = OBJECTS.playpen;
+  if (!playpen) return 'quiet';
+  const axes = getObjectAxes(state, 'playpen', playpen);
+  const key = playpen.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY;
+  return (axes[key] ?? playpen.initialState) as string;
+}
+
+function syncLoopingSceneAudio(state: GameState) {
+  // Parents' bedroom: loop crying until sister is quiet.
+  if (state.currentSceneId === 'parents_bedroom') {
+    const sister = getPlaypenSisterState(state);
+    if (sister !== 'quiet') {
+      audioService.startLoopingSound('crying_child');
+      return;
+    }
+  }
+  audioService.stopLoopingSound('crying_child');
+}
+
 /**
  * After `currentSceneId` is set to `sceneId`: one-shot `onLoad`, or scene `description` for revisits / scenes without onLoad.
  * `implicitCarry` — implicit score already earned this command (e.g. interaction pickup) merged into this arrival’s score bump.
@@ -343,6 +388,7 @@ function applySceneArrival(
   fromSceneId?: string,
   implicitCarry = 0,
 ): GameState {
+  const beforeInventory = [...state.inventory];
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
   const scene = SCENES[sceneId];
   if (!scene) {
@@ -355,6 +401,10 @@ function applySceneArrival(
   const firstOnLoad = Boolean(onLoad && !state.flags[key]);
 
   let next: GameState = { ...state, flags: { ...state.flags } };
+  // Focus is per-scene; leaving a room clears it until the player focuses something here.
+  if (fromSceneId !== undefined && fromSceneId !== sceneId) {
+    next = { ...next, focusedObjectId: undefined };
+  }
   const parts: string[] = [];
   if (preamble) parts.push(replaceName(preamble));
 
@@ -405,7 +455,7 @@ function applySceneArrival(
     next = { ...next, score: (next.score ?? 0) + implicitScore };
   }
 
-  return next;
+  return queueNewInventoryAnimations(beforeInventory, next);
 }
 
 /** Use when leaving the game-over screen so a bad snapshot never keeps `isGameOver` true. */
@@ -416,6 +466,7 @@ export function resumeFromGameOverSnapshot(snapshot: GameState): GameState {
     isGameOver: false,
     hp,
     pendingItem: null,
+    pendingItemQueue: [],
     pendingPrompt: undefined,
     deadlineAtMs: undefined,
     deadlineSceneId: undefined,
@@ -457,6 +508,16 @@ function dedupeIds(ids: ItemId[]): ItemId[] {
   return [...new Set(ids)];
 }
 
+function equipSlotKey(itemId: ItemId): string {
+  const it = ITEMS[itemId];
+  if (!it) return itemId;
+  const itemType = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+  if (itemType === 'weapon') {
+    return it.weaponHand === 'left' ? 'left_hand' : 'right_hand';
+  }
+  return (it.gearSlot ?? it.equipmentSlot ?? itemId) as string;
+}
+
 /** Items that must be in inventory: explicit `requiresInventory` plus `removeItem` if present. */
 function interactionRequiredItems(interaction: Interaction): ItemId[] {
   return dedupeIds([...(interaction.requiresInventory ?? []), ...(interaction.removeItem ? [interaction.removeItem] : [])]);
@@ -476,6 +537,27 @@ function responseInventoryAllows(state: GameState, response: CommandResponse): b
 
 function stripEquippedNotInInventory(state: GameState, inventory: ItemId[]): ItemId[] {
   return (state.equippedItemIds ?? []).filter((id) => inventory.includes(id));
+}
+
+function itemAnimationTarget(itemId: ItemId): 'inventory' | 'equipment' {
+  const it = ITEMS[itemId];
+  const t = it?.itemType ?? (it?.equippable ? 'gear' : 'misc');
+  return t === 'gear' || t === 'weapon' ? 'equipment' : 'inventory';
+}
+
+function queueNewInventoryAnimations(prevInventory: ItemId[], state: GameState): GameState {
+  const prevSet = new Set(prevInventory);
+  const added = state.inventory.filter((id) => !prevSet.has(id));
+  if (!added.length) return state;
+  const appended: Array<{ id: ItemId; target: 'inventory' | 'equipment' }> = added.map((id) => ({
+    id,
+    target: itemAnimationTarget(id),
+  }));
+  return {
+    ...state,
+    pendingItem: state.pendingItem ?? added[0] ?? null,
+    pendingItemQueue: [...(state.pendingItemQueue ?? []), ...appended],
+  };
 }
 
 function resolveItemInInventory(phrase: string, inventory: ItemId[]): ItemId | null {
@@ -499,36 +581,93 @@ function resolveItemInInventory(phrase: string, inventory: ItemId[]): ItemId | n
   return null;
 }
 
+/** Matches the Equipment dialog: gear slots + left/right weapon hands. */
+export type DerivedGearSlot = 'head' | 'torso' | 'hands' | 'legs' | 'feet';
+export type DerivedWeaponHand = 'left' | 'right';
+
+export function deriveEquippedSlots(state: GameState): {
+  gear: Partial<Record<DerivedGearSlot, ItemId>>;
+  weapons: Partial<Record<DerivedWeaponHand, ItemId>>;
+} {
+  const gear: Partial<Record<DerivedGearSlot, ItemId>> = {};
+  const weapons: Partial<Record<DerivedWeaponHand, ItemId>> = {};
+  for (const id of state.equippedItemIds ?? []) {
+    const it = ITEMS[id];
+    if (!it) continue;
+    if (it.itemType === 'weapon') {
+      const hand = (it.weaponHand ?? 'right') as DerivedWeaponHand;
+      weapons[hand] = id;
+      continue;
+    }
+    const slot = (it.gearSlot ?? (it.equipmentSlot as DerivedGearSlot | undefined)) as DerivedGearSlot | undefined;
+    if (slot) gear[slot] = id;
+  }
+  return { gear, weapons };
+}
+
 function describeSelf(state: GameState): string {
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
-  const lines: string[] = [];
-  const worn = state.equippedItemIds ?? [];
-  if (worn.length === 0) {
-    lines.push(
-      replaceName(
-        "{{name}}: You're stuck in the same dinosaur pajamas you've had since you were a kid—faded fabric, stretched seams, and absolutely zero dignity left in the elastic. Nothing else equipped right now.",
-      ),
-    );
-  } else {
-    lines.push('Equipped:');
-    for (const id of worn) {
-      const item = ITEMS[id];
-      const bit = item?.wearDescription ?? item?.name ?? id;
-      lines.push(`• ${replaceName(bit)}`);
+  const pajamasLine =
+    "{{name}} — The dinosaur underwear you've worn since forever—faded, stretched, and stubbornly familiar.";
+  const equipped = state.equippedItemIds ?? [];
+  const { gear, weapons } = deriveEquippedSlots(state);
+  const inventory = state.inventory ?? [];
+  const hasSlotItem = (slot: DerivedGearSlot) =>
+    inventory.some((id) => {
+      const it = ITEMS[id];
+      if (!it) return false;
+      const t = it.itemType ?? (it.equippable ? 'gear' : 'misc');
+      return t === 'gear' && (it.gearSlot ?? it.equipmentSlot) === slot;
+    });
+  const hasWeaponItem = inventory.some((id) => ITEMS[id]?.itemType === 'weapon');
+  const showHead = Boolean(gear.head) || hasSlotItem('head');
+  const showTorso = Boolean(gear.torso) || hasSlotItem('torso');
+  const showHands = Boolean(gear.hands) || hasSlotItem('hands');
+  const showLegs = Boolean(gear.legs) || hasSlotItem('legs');
+  const showFeet = Boolean(gear.feet) || hasSlotItem('feet');
+  const showWeapons = Boolean(weapons.left || weapons.right) || hasWeaponItem;
+  const anyVisibleSlots = showHead || showTorso || showHands || showLegs || showFeet || showWeapons;
+
+  if (!anyVisibleSlots) {
+    if (equipped.length === 0) {
+      return replaceName(pajamasLine);
     }
+    const names = equipped.map((id) => ITEMS[id]?.name ?? id).join(', ');
+    return `${replaceName(pajamasLine)}\n\nEquipped: ${names}.`;
   }
-  return lines.join('\n\n');
+
+  const slotName = (id?: ItemId) => {
+    if (!id || !ITEMS[id]) return '—';
+    return ITEMS[id].name;
+  };
+  const lines: string[] = ['Equipped:'];
+  if (showHead) lines.push(`Head:        ${slotName(gear.head)}`);
+  if (showTorso) lines.push(`Torso:       ${slotName(gear.torso)}`);
+  if (showWeapons) lines.push(`Left hand:   ${slotName(weapons.left)}`);
+  if (showWeapons) lines.push(`Right hand:  ${slotName(weapons.right)}`);
+  if (showHands) lines.push(`Hands:       ${slotName(gear.hands)}`);
+  if (showLegs) lines.push(`Legs:        ${slotName(gear.legs)}`);
+  if (showFeet) lines.push(`Feet:        ${slotName(gear.feet)}`);
+  return lines.join('\n');
+}
+
+function normalizeObjectLookupKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['`"]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, '_');
 }
 
 function resolveObjectInScene(target: string, objectIds: string[]): string | null {
-  const t = target.replace(/\s+/g, '_');
+  const t = normalizeObjectLookupKey(target);
   for (const oid of objectIds) {
     const obj = OBJECTS[oid];
     if (!obj) continue;
-    if (oid === t || oid === target.replace(/\s+/g, ' ')) return oid;
-    if (obj.name.toLowerCase() === target) return oid;
-    if (obj.name.toLowerCase().replace(/\s+/g, '_') === t) return oid;
-    if (target === oid.replace(/_/g, ' ')) return oid;
+    const oidNorm = normalizeObjectLookupKey(oid);
+    const nameNorm = normalizeObjectLookupKey(obj.name);
+    if (oidNorm === t || nameNorm === t) return oid;
   }
   return null;
 }
@@ -623,6 +762,7 @@ export function processCommand(state: GameState, input: string): GameState {
   const finish = (out: GameState) => {
     const afterDeath =
       out.isGameOver ? revertProgressStatsToCheckpoint(out) : out;
+    syncLoopingSceneAudio(afterDeath);
     return postCommandTurn(preCmdStateForTurn, afterDeath, pendingAliasConsumed);
   };
 
@@ -722,10 +862,7 @@ export function processCommand(state: GameState, input: string): GameState {
       patterns: ['^(help|h)$'],
       run: (s) => ({
         ...s,
-        history: [
-          ...s.history,
-          "Try commands like 'look', 'examine self', 'equip <item>', 'inventory', 'score', 'go [direction]', 'take [item]', or 'use [item] on [object]'.",
-        ],
+        history: [...s.history, getHelpText(currentScene)],
       }),
     },
     {
@@ -756,13 +893,14 @@ export function processCommand(state: GameState, input: string): GameState {
       return finish(newState);
     }
     const item = ITEMS[itemId];
-    if (!item?.equippable) {
-      newState.history.push("That isn't something you can wear.");
+    const itemType = item?.itemType ?? (item?.equippable ? 'gear' : 'misc');
+    if (!item || (itemType !== 'gear' && itemType !== 'weapon')) {
+      newState.history.push("That isn't something you can equip.");
       return finish(newState);
     }
-    const slot = item.equipmentSlot ?? itemId;
+    const slot = equipSlotKey(itemId);
     const prev = newState.equippedItemIds ?? [];
-    const withoutSlot = prev.filter((id) => (ITEMS[id]?.equipmentSlot ?? id) !== slot);
+    const withoutSlot = prev.filter((id) => equipSlotKey(id) !== slot);
     const equippedItemIds = dedupeIds([...withoutSlot, itemId]);
     newState.equippedItemIds = equippedItemIds;
     newState.history.push(replaceName(item.useText));
@@ -784,6 +922,12 @@ export function processCommand(state: GameState, input: string): GameState {
 
   const examineTarget = parseExamineTarget(command);
   if (examineTarget) {
+    const itemId = resolveItemInInventory(examineTarget, newState.inventory);
+    if (itemId) {
+      const item = ITEMS[itemId];
+      newState.history.push(item?.description ?? `You examine the ${item?.name ?? itemId}.`);
+      return finish(newState);
+    }
     const objId = resolveObjectInScene(examineTarget, currentScene.objects);
     if (objId) {
       const obj = OBJECTS[objId];
@@ -912,8 +1056,16 @@ export function processCommand(state: GameState, input: string): GameState {
   return finish(newState);
 }
 
+/** Same outcome as typing `equip <item name>` (e.g. from the Equipment dialog). */
+export function equipItemFromInventory(state: GameState, itemId: ItemId): GameState {
+  const item = ITEMS[itemId];
+  if (!item) return state;
+  return processCommand(state, `equip ${item.name}`);
+}
+
 function applyInteraction(state: GameState, interaction: Interaction, objId?: string): GameState {
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
+  const beforeInventory = [...state.inventory];
   let implicitScore = 0;
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
 
@@ -979,8 +1131,11 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
       const carryImplicit = implicitScore;
       implicitScore = 0;
       newState = applySceneArrival(newState, interaction.nextScene, interaction.text, fromSceneId, carryImplicit);
-    } else if (interaction.text) {
-      newState.history.push(replaceName(interaction.text));
+    } else {
+      if (interaction.text) {
+        newState.history.push(replaceName(interaction.text));
+      }
+      newState = { ...newState, focusedObjectId: undefined };
     }
   } else if (interaction.text) {
     newState.history.push(replaceName(interaction.text));
@@ -1017,11 +1172,12 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
   }
   newState = applySetPromptFromSpec(newState, interaction.setPrompt);
 
-  return newState;
+  return queueNewInventoryAnimations(beforeInventory, newState);
 }
 
 function applyResponse(state: GameState, response: CommandResponse): GameState {
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
+  const beforeInventory = [...state.inventory];
   let implicitScore = 0;
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
   if (!responseInventoryAllows(newState, response)) {
@@ -1069,8 +1225,11 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
       const carryImplicit = implicitScore;
       implicitScore = 0;
       newState = applySceneArrival(newState, response.nextScene, response.text, fromSceneId, carryImplicit);
-    } else if (response.text) {
-      newState.history.push(replaceName(response.text));
+    } else {
+      if (response.text) {
+        newState.history.push(replaceName(response.text));
+      }
+      newState = { ...newState, focusedObjectId: undefined };
     }
   } else if (response.text) {
     newState.history.push(replaceName(response.text));
@@ -1093,5 +1252,5 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
   }
   newState = applySetPromptFromSpec(newState, response.setPrompt);
 
-  return newState;
+  return queueNewInventoryAnimations(beforeInventory, newState);
 }

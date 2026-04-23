@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { ChevronLeft, Delete } from 'lucide-react';
 import { audioService } from '../lib/audioService';
 
-const NAMING_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?'.split('');
+const NAMING_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?'.split('');
 
 interface NamingScreenProps {
   onComplete: (name: string) => void;
@@ -16,7 +16,7 @@ export default function NamingScreen({ onComplete, onCancel }: NamingScreenProps
   const hoverUi = () => audioService.playHoverThrottled();
 
   const tryStart = () => {
-    const trimmed = name.trim();
+    const trimmed = name.trim().toUpperCase();
     if (!trimmed) {
       setNameError('Enter a name before starting your adventure.');
       return;
@@ -42,11 +42,11 @@ export default function NamingScreen({ onComplete, onCancel }: NamingScreenProps
           setNameError('Enter a name before starting your adventure.');
         } else {
           setNameError(null);
-          onComplete(trimmed);
+          onComplete(trimmed.toUpperCase());
         }
-      } else if (e.key.length === 1 && NAMING_CHARSET.includes(e.key)) {
+      } else if (e.key.length === 1 && NAMING_CHARSET.includes(e.key.toUpperCase())) {
         if (name.length < 12) {
-          setName((prev) => prev + e.key);
+          setName((prev) => prev + e.key.toUpperCase());
           setNameError(null);
         }
       } else if (e.key === ' ') {
@@ -63,7 +63,7 @@ export default function NamingScreen({ onComplete, onCancel }: NamingScreenProps
 
   const handleCharClick = (char: string) => {
     if (name.length < 12) {
-      setName((prev) => prev + char);
+      setName((prev) => prev + char.toUpperCase());
       setNameError(null);
     }
   };
