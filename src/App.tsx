@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
+import React, { useState, useEffect, useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import clsx from 'clsx';
 import {
@@ -445,19 +445,6 @@ export default function App() {
   const isCutscene = Boolean(
     state.gameStarted && !state.namingPhase && !state.isGameOver && state.currentSceneId.startsWith('cutscene_'),
   );
-  const [postCutsceneChromeKey, setPostCutsceneChromeKey] = useState(0);
-  const cutsceneSweepRef = useRef(false);
-
-  useLayoutEffect(() => {
-    if (isCutscene) {
-      cutsceneSweepRef.current = true;
-      return;
-    }
-    if (cutsceneSweepRef.current) {
-      cutsceneSweepRef.current = false;
-      setPostCutsceneChromeKey((k) => k + 1);
-    }
-  }, [isCutscene]);
 
   useEffect(() => {
     if (!isNarrowMobile) {
@@ -465,11 +452,6 @@ export default function App() {
       setMobileRightOpen(false);
     }
   }, [isNarrowMobile]);
-
-  useEffect(() => {
-    setMobileLeftOpen(false);
-    setMobileRightOpen(false);
-  }, [postCutsceneChromeKey]);
 
   useEffect(() => {
     if (!state.isGameOver) return;
@@ -1171,11 +1153,10 @@ export default function App() {
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
-                key={`left-${postCutsceneChromeKey}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.32 : 0, ease: [0.4, 0, 0.2, 1] }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
                   'z-40 flex w-64 flex-col border-r-4 border-border-base bg-bg-panel',
                   'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',
@@ -1500,12 +1481,10 @@ export default function App() {
             </section>
 
             <motion.section
-              key={postCutsceneChromeKey}
-              initial={postCutsceneChromeKey === 0 ? false : { opacity: 0 }}
+              initial={false}
               animate={{ opacity: 1 }}
               transition={{
-                duration: postCutsceneChromeKey === 0 ? 0 : 0.55,
-                delay: postCutsceneChromeKey === 0 ? 0 : 0.36,
+                duration: 0.2,
                 ease: [0.4, 0, 0.2, 1],
               }}
               className={clsx(
@@ -1623,11 +1602,10 @@ export default function App() {
           <AnimatePresence>
             {state.uiVisible && (
               <motion.aside
-                key={`right-${postCutsceneChromeKey}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, delay: postCutsceneChromeKey > 0 ? 0.34 : 0, ease: [0.4, 0, 0.2, 1] }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                 className={clsx(
                   'z-40 flex min-h-0 w-80 flex-col border-l-4 border-border-base bg-bg-panel p-0',
                   'lg:relative lg:h-auto lg:max-h-none lg:translate-x-0',

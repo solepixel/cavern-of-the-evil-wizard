@@ -45,10 +45,14 @@ export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTra
   const scene = deps.scenes[sceneId];
   if (!scene) {
     if (!preamble) {
-      return { state, soundsToPlay: [], shouldCheckpoint: false };
+      return { state: { ...state, currentSceneId: sceneId }, soundsToPlay: [], shouldCheckpoint: false };
     }
     return {
-      state: { ...state, history: [...state.history, replaceName(preamble, state.playerName)] },
+      state: {
+        ...state,
+        currentSceneId: sceneId,
+        history: [...state.history, replaceName(preamble, state.playerName)],
+      },
       soundsToPlay: [],
       shouldCheckpoint: false,
     };
@@ -62,7 +66,7 @@ export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTra
     parts.push(replaceName(preamble, state.playerName));
   }
 
-  let next: GameState = { ...state, flags: { ...state.flags } };
+  let next: GameState = { ...state, currentSceneId: sceneId, flags: { ...state.flags } };
   if (fromSceneId !== undefined && fromSceneId !== sceneId) {
     next = { ...next, focusedObjectId: undefined };
   }

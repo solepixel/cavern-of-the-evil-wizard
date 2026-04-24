@@ -4,6 +4,10 @@ import './testEnv';
 import { INITIAL_STATE } from '../src/gameData';
 import { transitionCommand } from '../src/lib/gameEngine';
 
+function runCommands(start: typeof INITIAL_STATE, commands: string[]) {
+  return commands.reduce((s, cmd) => transitionCommand(s, cmd).state, start);
+}
+
 test('transitionCommand emits scene and history effects for intro command', () => {
   const start = {
     ...INITIAL_STATE,
@@ -40,4 +44,101 @@ test('transitionCommand emits inventory effect when player gets an item', () => 
   if (inventoryEffect?.type === 'inventory.changed') {
     assert.ok(inventoryEffect.added.includes('old_key'));
   }
+});
+
+test('examine parents closet command resolves in parents bedroom', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'parents_bedroom',
+    history: [],
+  };
+
+  const result = transitionCommand(start, 'examine parents closet').state;
+  const last = result.history[result.history.length - 1] ?? '';
+  assert.notEqual(last, 'Command not recognized.');
+});
+
+test('hallway callback transition updates currentSceneId and allows go north/downstairs', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'parents_bedroom',
+    history: [],
+    inventory: ['giants_hoodie', 'sweatpants_gray', 'sneakers_white'],
+    equippedItemIds: ['giants_hoodie', 'sweatpants_gray', 'sneakers_white'],
+    flags: { house_arc_need_hurry: true },
+    objectStates: { playpen: { sister: 'quiet' } },
+  };
+
+  const dressed = transitionCommand(start, 'go hallway').state;
+
+  assert.equal(dressed.currentSceneId, 'hallway');
+
+  const north = transitionCommand(dressed, 'go north').state;
+  assert.notEqual(north.history[north.history.length - 1], 'Command not recognized.');
+
+  const downstairs = transitionCommand(dressed, 'go downstairs').state;
+  assert.notEqual(downstairs.history[downstairs.history.length - 1], 'Command not recognized.');
+});
+
+test('full bedroom-to-return-house branch remains stable and ends in death state', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'cutscene_intro',
+    history: [],
+  };
+
+  const script: Array<{ cmd: string; expect: string }> = [
+    { cmd: 'explore the room', expect: 'You wake up in a room that feels impossibly small.' },
+    { cmd: 'look out window', expect: 'You look out the window.' },
+    { cmd: 'open wardrobe', expect: 'You open the wardrobe.' },
+    { cmd: 'close wardrobe', expect: 'You close the wardrobe.' },
+    { cmd: 'look under rug', expect: 'you find a QUARTER' },
+    { cmd: 'make bed', expect: "It's now made. Well done!" },
+    { cmd: 'look under bed', expect: 'no monsters under there' },
+    { cmd: 'fix rug', expect: "It's now flat." },
+    { cmd: 'use key on door', expect: "You're in the upstairs hall of your parents' house" },
+    { cmd: 'go south', expect: 'The room is dim. Your baby sister is in a PLAYPEN' },
+    { cmd: 'examine nightstand', expect: 'A nightstand with a baby RATTLE on top' },
+    { cmd: 'take rattle', expect: 'You pocket the rattle.' },
+    { cmd: 'examine playpen', expect: 'Your baby sister is in the playpen' },
+    { cmd: 'give rattle to sister', expect: 'goes suspiciously quiet' },
+    { cmd: 'open closet', expect: 'You ease the closet open.' },
+    { cmd: 'take clothes', expect: 'You grab the hoodie, sweatpants, and sneakers.' },
+    { cmd: 'close closet', expect: 'You close the closet.' },
+    { cmd: 'equip Gray Sweatpants', expect: 'You step into the gray sweatpants.' },
+    { cmd: 'equip NY Giants Hoodie', expect: 'You pull on the [[Giants hoodie]].' },
+    { cmd: 'equip White Sneakers', expect: 'You lace up the plain [[white dad-sneakers]].' },
+    { cmd: 'go hallway', expect: "You'd better move." },
+    { cmd: 'go downstairs', expect: 'The suburban night air hits you like a reboot.' },
+    { cmd: 'RETURN TO HOUSE', expect: 'everything goes sideways—fast.' },
+  ];
+
+  let state = start;
+  for (const step of script) {
+    const beforeLen = state.history.length;
+    state = transitionCommand(state, step.cmd).state;
+    const appended = state.history.slice(beforeLen);
+    assert.ok(!appended.includes('Command not recognized.'), `Unexpected command failure for: ${step.cmd}`);
+    assert.ok(
+      appended.some((line) => line.includes(step.expect)),
+      `Expected "${step.expect}" after "${step.cmd}" but got:\n${appended.join('\n---\n')}`,
+    );
+  }
+
+  assert.equal(state.currentSceneId, 'cutscene_house_escape');
+  assert.equal(state.isGameOver, true);
+  const last = state.history[state.history.length - 1] ?? '';
+  assert.ok(last.includes('YOU HAVE DIED.'));
 });

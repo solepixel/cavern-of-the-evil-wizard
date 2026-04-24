@@ -19,6 +19,11 @@
   body {
     @apply bg-bg-base text-text-primary overflow-hidden;
   }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 .crt-scanlines {
