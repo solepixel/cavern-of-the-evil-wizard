@@ -277,6 +277,8 @@ export default function App() {
   /** Fixed side drawers on small screens (game stays full-width until opened). */
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
+  const [damageFlashPulse, setDamageFlashPulse] = useState(0);
+  const shouldAnimateDamageRef = useRef(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   /** Commands typed in the terminal (oldest → newest); used for Up/Down history. */
   const commandHistoryRef = useRef<string[]>([]);
@@ -445,6 +447,9 @@ export default function App() {
   const isCutscene = Boolean(
     state.gameStarted && !state.namingPhase && !state.isGameOver && state.currentSceneId.startsWith('cutscene_'),
   );
+  const isPreGameScreen = !state.gameStarted || state.namingPhase;
+  const isPanelScene = useCallback((sceneId: string) => Boolean(SCENES[sceneId]?.cutscenePanelOrdinal), []);
+  const getPanelOrdinal = useCallback((sceneId: string) => SCENES[sceneId]?.cutscenePanelOrdinal, []);
 
   useEffect(() => {
     if (!isNarrowMobile) {
@@ -470,6 +475,15 @@ export default function App() {
       }
     }
   }, [state.isGameOver]);
+
+  const prevHpRef = useRef(state.hp);
+  useEffect(() => {
+    if (shouldAnimateDamageRef.current && state.hp < prevHpRef.current) {
+      setDamageFlashPulse((n) => n + 1);
+    }
+    shouldAnimateDamageRef.current = false;
+    prevHpRef.current = state.hp;
+  }, [state.hp]);
 
   const handleTypewriterComplete = useCallback(
     (lineIndex: number) => {
@@ -514,6 +528,7 @@ export default function App() {
     if (!commandToProcess.trim()) return;
 
     audioService.playSound('click');
+    shouldAnimateDamageRef.current = true;
     const newState = processCommand(state, commandToProcess);
     const enteringCutscene =
       !state.currentSceneId.startsWith('cutscene_') && newState.currentSceneId.startsWith('cutscene_');
@@ -709,6 +724,8 @@ export default function App() {
         const loaded = loadSaveSlot(slotId);
         if (loaded) {
           setIsLoadModalOpen(false);
+          setInputValue('');
+          setSuggestionHighlight(-1);
           setState(loaded);
         } else {
           alert('Failed to load that save slot.');
@@ -778,8 +795,8 @@ export default function App() {
     <SettingsModal
       isOpen={isSettingsOpen}
       onClose={() => setIsSettingsOpen(false)}
-      onSave={handleSaveProgress}
-      onReset={resetGame}
+      onSave={isPreGameScreen ? undefined : handleSaveProgress}
+      onReset={isPreGameScreen ? undefined : resetGame}
       ambientVolume={ambientVolume}
       onAmbientVolumeChange={handleAmbientVolumeChange}
       sfxVolume={sfxVolume}
@@ -794,12 +811,16 @@ export default function App() {
         setIsSettingsOpen(false);
         setInfoModalKind('reboot');
       }}
-      onHelp={() => {
-        setIsSettingsOpen(false);
-        setInfoModalKind('help');
-      }}
+      onHelp={
+        isPreGameScreen
+          ? undefined
+          : () => {
+              setIsSettingsOpen(false);
+              setInfoModalKind('help');
+            }
+      }
       onDataLog={
-        isDevDebugUi
+        isDevDebugUi && !isPreGameScreen
           ? () => {
               setIsSettingsOpen(false);
               setInfoModalKind('log');
@@ -810,7 +831,7 @@ export default function App() {
   );
 
   const mainFooter = (
-    <footer className="z-50 border-t-4 border-white bg-bg-base px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-accent-magenta md:px-8 md:py-2">
+    <footer className="z-65 border-t-4 border-white bg-bg-base px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] text-[10px] uppercase tracking-widest text-accent-magenta md:px-8 md:py-2">
       <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center justify-between gap-3 md:block">
           <div className="truncate text-left text-[9px] md:text-left md:text-[10px]">(C) 1988 SENTIENT TERMINAL SYSTEMS</div>
@@ -849,14 +870,16 @@ export default function App() {
           <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('reboot')}>
             SYSTEM_REBOOT
           </button>
-          {isDevDebugUi && (
+          {!isPreGameScreen && isDevDebugUi && (
             <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('log')}>
               DATA_LOG
             </button>
           )}
-          <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('help')}>
-            HELP
-          </button>
+          {!isPreGameScreen && (
+            <button type="button" onMouseEnter={hoverUi} className="hover:text-accent-cyan" onClick={() => setInfoModalKind('help')}>
+              HELP
+            </button>
+          )}
         </div>
       </div>
     </footer>
@@ -1125,6 +1148,8 @@ export default function App() {
                 scene={currentScene}
                 gameChromeVisible={state.uiVisible}
                 onChoice={(choice) => handleCommand(undefined, choice)}
+                isPanelScene={isPanelScene}
+                getPanelOrdinal={getPanelOrdinal}
               />
             )}
           </AnimatePresence>
@@ -1340,6 +1365,26 @@ export default function App() {
                   >
                     <Backpack size={20} /> INVENTORY
                   </button>
+                  {showEquippedHud && (
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      disabled={state.isGameOver}
+                      onClick={() => {
+                        if (state.isGameOver) return;
+                        setIsEquippedModalOpen(true);
+                        setMobileLeftOpen(false);
+                      }}
+                      className={clsx(
+                        'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
+                        state.isGameOver
+                          ? 'cursor-not-allowed text-accent-cyan/35'
+                          : 'text-accent-cyan opacity-70 hover:bg-accent-magenta hover:text-bg-base',
+                      )}
+                    >
+                      <Shirt size={20} /> EQUIPMENT
+                    </button>
+                  )}
                   {state.hasMap && (
                     <button
                       type="button"
@@ -1466,6 +1511,8 @@ export default function App() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setSkipTypewriter(true);
+                      setInputValue('');
+                      setSuggestionHighlight(-1);
                       if (state.lastCheckpoint) {
                         setState(resumeFromCheckpointWithFeedback(state.lastCheckpoint));
                       } else {
@@ -1532,7 +1579,17 @@ export default function App() {
                       autoFocus={!isNarrowMobile}
                       type="text"
                       autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
                       spellCheck={false}
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
+                      data-privacy-ignore="true"
+                      data-form-type="other"
+                      data-gramm="false"
+                      data-gramm_editor="false"
+                      data-enable-grammarly="false"
                       value={inputValue}
                       onChange={(e) => {
                         historyNavOffsetRef.current = -1;
@@ -1764,6 +1821,18 @@ export default function App() {
         />
 
         {mainFooter}
+        <AnimatePresence>
+          {damageFlashPulse > 0 && (
+            <motion.div
+              key={damageFlashPulse}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.85, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.78, times: [0, 0.22, 1], ease: [0.4, 0, 0.2, 1] }}
+              className="pointer-events-none fixed inset-0 z-120 shadow-[inset_0_0_0_3px_rgba(248,113,113,0.95),inset_0_0_70px_rgba(239,68,68,0.5)]"
+            />
+          )}
+        </AnimatePresence>
       </GameShell>
       <ModalLayer>
         {infoModal}

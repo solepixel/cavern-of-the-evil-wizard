@@ -179,10 +179,30 @@ export const OBJECTS: Record<string, GameObject> = {
         id: 'wardrobe_open_key',
         regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
         whenAxes: { door: 'closed', contents: 'key' },
-        text: "You open the wardrobe. Inside, you find a red hoodie that looks too small for you in your current condition. You also find an OLD BRASS KEY hanging on a hook.",
-        getItem: 'old_key',
-        setAxes: { door: 'open', contents: 'empty' },
+        text: "You open the wardrobe. Inside, you find a red hoodie that looks too small for you in your current condition. You also see an OLD BRASS KEY hanging on a hook.",
+        setAxes: { door: 'open' },
         playSound: 'wood_creak_open',
+      },
+      {
+        id: 'wardrobe_take_key',
+        regex: '(take|get|grab|pick up)( the)?( old)?( brass)? key( from( the)? wardrobe)?',
+        whenAxes: { door: 'open', contents: 'key' },
+        text: 'You take the OLD BRASS KEY from the wardrobe hook.',
+        getItem: 'old_key',
+        setAxes: { contents: 'empty' },
+        scoreDelta: 10,
+      },
+      {
+        id: 'wardrobe_take_key_closed',
+        regex: '(take|get|grab|pick up)( the)?( old)?( brass)? key( from( the)? wardrobe)?',
+        whenAxes: { door: 'closed', contents: 'key' },
+        text: "The key is inside the wardrobe. You'll need to open it first.",
+      },
+      {
+        id: 'wardrobe_take_key_empty',
+        regex: '(take|get|grab|pick up)( the)?( old)?( brass)? key( from( the)? wardrobe)?',
+        whenAxes: { contents: 'empty' },
+        redundantMessage: "You've already taken the key.",
       },
       {
         id: 'wardrobe_open_empty',
@@ -381,10 +401,10 @@ export const OBJECTS: Record<string, GameObject> = {
       },
       {
         regex: 'jump (on(to)?)( the)? bed',
-        text: "You attempt to jump on the [[bed]]. You are too tall and you hit your head on the ceiling. You land awkwardly on your ankle and fall too the floor from the top bunk. Unfortunately, your neck breaks your fall and you are dead.",
-        isDeath: true,
-        damage: 100,
-        playSound: ['bone_break', 'death_rattle'],
+        text: "You launch yourself at the [[bed]], twist your ankle on the way down, and crash hard on the floor. Everything rings. That hurt badly.",
+        redundantMessage: "Your desire to have this type of fun at your size has cost you dearly. You bump your head on the low ceiling and land awkwardly on your neck.",
+        damage: 50,
+        playSound: 'bone_break',
       },
       {
         regex: 'look under( the)? bed',
@@ -486,7 +506,7 @@ export const OBJECTS: Record<string, GameObject> = {
       {
         regex: '(take|get|grab) (the )?(cloth(es|ing)|outfit|hoodie|sneakers|sweatpants)( from closet)?',
         whenAxes: { door: 'open', contents: 'full' },
-        text: "You grab the hoodie, sweatpants, and sneakers. It's not your style, but at least it fits!",
+        text: "You grab the [[hoodie]], [[sweatpants]], and [[sneakers]]. It's not your style, but at least it fits!",
         setAxes: { contents: 'empty' },
         scoreDelta: 15,
         playSound: 'retrieve_clothing',
@@ -517,7 +537,7 @@ export const OBJECTS: Record<string, GameObject> = {
       {
         regex: '(take|get|pick up)( the)?( baby)? rattle',
         whenObjectState: 'rattle_here',
-        text: 'You pocket the rattle. It feels ridiculous. It also feels like peace insurance.',
+        text: 'You pocket the [[rattle]]. It feels ridiculous. It also feels like peace insurance.',
         getItem: 'rattle',
         setState: 'empty',
         scoreDelta: 5,
@@ -545,7 +565,7 @@ export const OBJECTS: Record<string, GameObject> = {
         whenAxes: { sister: 'crying' },
         requiresInventory: ['rattle'],
         removeItem: 'rattle',
-        text: 'You offer the rattle. Your sister grabs it mid-wail—then goes suspiciously quiet, like someone flipped a breaker.',
+        text: 'You offer the [[rattle]]. Your sister grabs it mid-wail—then goes suspiciously quiet, like someone flipped a breaker.',
         setAxes: { sister: 'quiet' },
         scoreDelta: 25,
         playSound: 'rattle_noise',
@@ -870,7 +890,6 @@ export const SCENES: Record<string, Scene> = {
     id: 'cutscene_house_escape',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 2,
-    cutsceneChoiceOverlines: ['TAKE BIKE TO FAIRGROUNDS', 'RETURN TO HOUSE'],
     title: 'Into the Night',
     description:
       'The suburban night air hits you like a reboot. Streetlights. Crickets. Somewhere, a dog barks at the universe.',
@@ -900,7 +919,6 @@ export const SCENES: Record<string, Scene> = {
     id: 'cutscene_bike_to_fairgrounds',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 3,
-    cutsceneChoiceOverlines: ['SEARCH FOR ZOLTAR'],
     title: 'Sea Point Park',
     description:
       'You pedal until your lungs burn. The carnival lights you remember are gone—only empty chain-link and wind-torn banners remain.',
@@ -908,9 +926,13 @@ export const SCENES: Record<string, Scene> = {
     objects: [],
     exits: {},
     commands: {
-      'SEARCH FOR ZOLTAR': {
+      'EXPLORE FAIRGROUND': {
         text: 'At the center of the desolation, one machine remains: Zoltar, waiting like a punchline.',
         nextScene: 'fairgrounds',
+      },
+      'PEDAL BACK HOME': {
+        text: 'You turn the bike around and head back toward your house, second-guessing everything.',
+        nextScene: 'cutscene_house_escape',
       },
     },
   },

@@ -6,8 +6,8 @@ import { audioService } from '../lib/audioService';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: () => void;
-  onReset: () => void;
+  onSave?: () => void;
+  onReset?: () => void;
   ambientVolume: number;
   onAmbientVolumeChange: (val: number) => void;
   sfxVolume: number;
@@ -206,27 +206,33 @@ export default function SettingsModal({
               )}
 
               {/* Game Actions */}
-              <div className="grid grid-cols-1 gap-4 pt-4 border-t border-border-base">
-                <button 
-                  type="button"
-                  onMouseEnter={hoverUi}
-                  onClick={() => { onSave(); onClose(); }}
-                  className="w-full bg-white text-text-inverse font-black py-4 px-6 uppercase tracking-widest hover:bg-accent-cyan transition-all flex justify-between items-center group"
-                >
-                  <span>SAVE PROGRESS</span>
-                  <Save size={20} />
-                </button>
-                
-                <button 
-                  type="button"
-                  onMouseEnter={hoverUi}
-                  onClick={() => { onReset(); onClose(); }}
-                  className="w-full border-2 border-red-500 text-red-500 font-black py-4 px-6 uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex justify-between items-center group"
-                >
-                  <span>TERMINATE SESSION</span>
-                  <LogOut size={20} />
-                </button>
-              </div>
+              {(onSave || onReset) && (
+                <div className="grid grid-cols-1 gap-4 pt-4 border-t border-border-base">
+                  {onSave && (
+                    <button 
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => { onSave(); onClose(); }}
+                      className="w-full bg-white text-text-inverse font-black py-4 px-6 uppercase tracking-widest hover:bg-accent-cyan transition-all flex justify-between items-center group"
+                    >
+                      <span>SAVE PROGRESS</span>
+                      <Save size={20} />
+                    </button>
+                  )}
+
+                  {onReset && (
+                    <button 
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => { onReset(); onClose(); }}
+                      className="w-full border-2 border-red-500 text-red-500 font-black py-4 px-6 uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex justify-between items-center group"
+                    >
+                      <span>TERMINATE SESSION</span>
+                      <LogOut size={20} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mt-8 pt-4 border-t border-border-base text-center">

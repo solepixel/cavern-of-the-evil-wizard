@@ -146,7 +146,7 @@ export default function LoadGameModal({
                             <div className="flex h-12 w-12 items-center justify-center overflow-hidden border border-border-base bg-[#0f0f0f]">
                               <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
                             </div>
-                            <div className="mt-2 text-center text-[10px] font-black uppercase leading-tight tracking-widest text-accent-cyan/90">
+                            <div className="mt-2 text-center text-[10px] uppercase leading-tight tracking-widest text-accent-cyan/80">
                               SCORE:
                               <br />
                               {typeof s.score === 'number' ? s.score : 0}
@@ -163,7 +163,7 @@ export default function LoadGameModal({
 
                             <div className="mt-2 flex items-center gap-2">
                               {s.note ? (
-                                <div className="text-xs font-bold normal-case tracking-normal text-accent-magenta">&ldquo;{s.note}&rdquo;</div>
+                                <div className="text-xs normal-case tracking-normal text-accent-magenta">{s.note}</div>
                               ) : (
                                 <div className="text-[10px] uppercase tracking-widest text-text-primary/40">No checkpoint note</div>
                               )}
@@ -205,6 +205,18 @@ export default function LoadGameModal({
                           <label className="text-[10px] font-black uppercase tracking-widest text-accent-cyan/80">Checkpoint note</label>
                           <input
                             type="text"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoCapitalize="off"
+                            spellCheck={false}
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-bwignore="true"
+                            data-privacy-ignore="true"
+                            data-form-type="other"
+                            data-gramm="false"
+                            data-gramm_editor="false"
+                            data-enable-grammarly="false"
                             value={draftNote}
                             onChange={(e) => setDraftNote(e.target.value)}
                             maxLength={80}

@@ -26,7 +26,7 @@ test('transitionCommand emits scene and history effects for intro command', () =
   assert.ok(effectTypes.includes('scene.changed'));
 });
 
-test('transitionCommand emits inventory effect when player gets an item', () => {
+test('opening wardrobe no longer auto-picks key; take key emits inventory effect', () => {
   const start = {
     ...INITIAL_STATE,
     gameStarted: true,
@@ -38,7 +38,11 @@ test('transitionCommand emits inventory effect when player gets an item', () => 
     inventory: [],
   };
 
-  const result = transitionCommand(start, 'open wardrobe');
+  const opened = transitionCommand(start, 'open wardrobe');
+  const openInventoryEffect = opened.effects.find((e) => e.type === 'inventory.changed');
+  assert.equal(openInventoryEffect, undefined);
+
+  const result = transitionCommand(opened.state, 'take key');
   const inventoryEffect = result.effects.find((e) => e.type === 'inventory.changed');
   assert.ok(inventoryEffect);
   if (inventoryEffect?.type === 'inventory.changed') {
@@ -88,6 +92,28 @@ test('hallway callback transition updates currentSceneId and allows go north/dow
   assert.notEqual(downstairs.history[downstairs.history.length - 1], 'Command not recognized.');
 });
 
+test('jumping on bed inflicts 50 damage and requires two failures for death', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    hp: 100,
+    maxHp: 100,
+  };
+
+  const first = transitionCommand(start, 'jump on bed').state;
+  assert.equal(first.hp, 50);
+  assert.equal(first.isGameOver, false);
+
+  const second = transitionCommand(first, 'jump on bed').state;
+  assert.equal(second.hp, 0);
+  assert.equal(second.isGameOver, true);
+});
+
 test('full bedroom-to-return-house branch remains stable and ends in death state', () => {
   const start = {
     ...INITIAL_STATE,
@@ -103,6 +129,7 @@ test('full bedroom-to-return-house branch remains stable and ends in death state
     { cmd: 'explore the room', expect: 'You wake up in a room that feels impossibly small.' },
     { cmd: 'look out window', expect: 'You look out the window.' },
     { cmd: 'open wardrobe', expect: 'You open the wardrobe.' },
+    { cmd: 'take key', expect: 'You take the OLD BRASS KEY' },
     { cmd: 'close wardrobe', expect: 'You close the wardrobe.' },
     { cmd: 'look under rug', expect: 'you find a QUARTER' },
     { cmd: 'make bed', expect: "It's now made. Well done!" },
@@ -111,11 +138,11 @@ test('full bedroom-to-return-house branch remains stable and ends in death state
     { cmd: 'use key on door', expect: "You're in the upstairs hall of your parents' house" },
     { cmd: 'go south', expect: 'The room is dim. Your baby sister is in a PLAYPEN' },
     { cmd: 'examine nightstand', expect: 'A nightstand with a baby RATTLE on top' },
-    { cmd: 'take rattle', expect: 'You pocket the rattle.' },
+    { cmd: 'take rattle', expect: 'It also feels like peace insurance.' },
     { cmd: 'examine playpen', expect: 'Your baby sister is in the playpen' },
     { cmd: 'give rattle to sister', expect: 'goes suspiciously quiet' },
     { cmd: 'open closet', expect: 'You ease the closet open.' },
-    { cmd: 'take clothes', expect: 'You grab the hoodie, sweatpants, and sneakers.' },
+    { cmd: 'take clothes', expect: "It's not your style, but at least it fits!" },
     { cmd: 'close closet', expect: 'You close the closet.' },
     { cmd: 'equip Gray Sweatpants', expect: 'You step into the gray sweatpants.' },
     { cmd: 'equip NY Giants Hoodie', expect: 'You pull on the [[Giants hoodie]].' },

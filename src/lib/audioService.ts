@@ -1,6 +1,8 @@
 import type { GameSfxSpec } from '../types';
 
 const AUDIO_PREFS_KEY = 'cavern_evaw_audio_v2';
+const DEFAULT_AMBIENT_VOLUME = 0.1;
+const DEFAULT_SFX_VOLUME = 0.35;
 
 const AMBIENT_GLOBAL_KEY = '__cavernEvilWizardAmbientAudio__' as const;
 export const DEFAULT_AMBIENT_SRC = '/assets/audio/Cavern_of_the_Evil_Wizard_(Intro)-v3.mp3';
@@ -35,7 +37,13 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 export function loadAudioPreferences(): AudioPreferences {
   if (typeof window === 'undefined')
-    return { ambientVolume: 0.3, sfxVolume: 0.3, muted: false, ambientMuted: false, sfxMuted: false };
+    return {
+      ambientVolume: DEFAULT_AMBIENT_VOLUME,
+      sfxVolume: DEFAULT_SFX_VOLUME,
+      muted: false,
+      ambientMuted: false,
+      sfxMuted: false,
+    };
   try {
     const raw = localStorage.getItem(AUDIO_PREFS_KEY);
     if (raw) {
@@ -43,9 +51,13 @@ export function loadAudioPreferences(): AudioPreferences {
       const legacyVolume =
         typeof p.volume === 'number' && !Number.isNaN(p.volume) ? clamp01(p.volume) : undefined;
       const ambientVolume =
-        typeof p.ambientVolume === 'number' && !Number.isNaN(p.ambientVolume) ? clamp01(p.ambientVolume) : legacyVolume ?? 0.3;
+        typeof p.ambientVolume === 'number' && !Number.isNaN(p.ambientVolume)
+          ? clamp01(p.ambientVolume)
+          : legacyVolume ?? DEFAULT_AMBIENT_VOLUME;
       const sfxVolume =
-        typeof p.sfxVolume === 'number' && !Number.isNaN(p.sfxVolume) ? clamp01(p.sfxVolume) : legacyVolume ?? 0.3;
+        typeof p.sfxVolume === 'number' && !Number.isNaN(p.sfxVolume)
+          ? clamp01(p.sfxVolume)
+          : legacyVolume ?? DEFAULT_SFX_VOLUME;
       return {
         ambientVolume,
         sfxVolume,
@@ -57,7 +69,13 @@ export function loadAudioPreferences(): AudioPreferences {
   } catch {
     /* ignore */
   }
-  return { ambientVolume: 0.3, sfxVolume: 0.3, muted: false, ambientMuted: false, sfxMuted: false };
+  return {
+    ambientVolume: DEFAULT_AMBIENT_VOLUME,
+    sfxVolume: DEFAULT_SFX_VOLUME,
+    muted: false,
+    ambientMuted: false,
+    sfxMuted: false,
+  };
 }
 
 export function saveAudioPreferences(prefs: AudioPreferences) {
@@ -96,8 +114,8 @@ class AudioService {
   private loopingSfx: Record<string, HTMLAudioElement> = {};
   /** Last SFX id or chain label for dev debug panel. */
   private lastSfxDebugLabel: string | null = null;
-  private ambientVolume: number = 0.3;
-  private sfxVolume: number = 0.3;
+  private ambientVolume: number = DEFAULT_AMBIENT_VOLUME;
+  private sfxVolume: number = DEFAULT_SFX_VOLUME;
   private isMuted: boolean = false;
   private isAmbientMuted: boolean = false;
   private isSfxMuted: boolean = false;

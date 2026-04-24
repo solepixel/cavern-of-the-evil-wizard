@@ -163,8 +163,6 @@ export interface Scene {
   viewportHandoffLayoutId?: string;
   /** Cutscene chrome: `PANEL_NN` index (e.g. 1 = bedroom intro, 3 = parents bedroom beat). */
   cutscenePanelOrdinal?: number;
-  /** Per-choice overline above the main label; defaults to `OPTION_N`. Same order as `Object.keys(commands)`. */
-  cutsceneChoiceOverlines?: string[];
   objects: ObjectId[]; // IDs of objects present in this scene
   /** Extra interaction labels for the sidebar (e.g. BED when not a separate object) */
   interactionLabels?: string[];
