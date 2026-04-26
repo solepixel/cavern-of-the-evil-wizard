@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { X } from 'lucide-react';
+import { Bug, X } from 'lucide-react';
 import { GameState } from '../types';
 import { audioService } from '../lib/audioService';
 import { buildGameplayDebugSnapshot } from '../lib/debugSnapshot';
@@ -9,6 +9,7 @@ import { SCENES } from '../gameData';
 interface DevDebugModalProps {
   state: GameState;
   onClose: () => void;
+  onOpenDebugPanel?: () => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -32,7 +33,7 @@ function Lines({ items }: { items: string[] }) {
   );
 }
 
-export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
+export default function DevDebugModal({ state, onClose, onOpenDebugPanel }: DevDebugModalProps) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setTick((t) => t + 1), 250);
@@ -72,7 +73,23 @@ export default function DevDebugModal({ state, onClose }: DevDebugModalProps) {
 
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border-base p-4 pr-3">
           <div>
-            <h2 className="text-lg font-black uppercase tracking-widest text-accent-magenta">DATA_LOG</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-black uppercase tracking-widest text-accent-magenta">DATA_LOG</h2>
+              {onOpenDebugPanel && (
+                <button
+                  type="button"
+                  onMouseEnter={hoverUi}
+                  onClick={() => {
+                    onClose();
+                    onOpenDebugPanel();
+                  }}
+                  className="inline-flex items-center gap-1 border border-accent-cyan/50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan/15"
+                >
+                  <Bug size={12} />
+                  DEBUG
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-[10px] uppercase tracking-widest text-accent-cyan/80">Dev snapshot — updates live</p>
           </div>
           <button type="button" onMouseEnter={hoverUi} onClick={onClose} className="text-accent-cyan hover:text-white" aria-label="Close">

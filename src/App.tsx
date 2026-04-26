@@ -52,6 +52,7 @@ import InventoryAnimation from './components/InventoryAnimation';
 import SettingsModal from './components/SettingsModal';
 import InfoModal, { InfoModalKind } from './components/InfoModal';
 import DevDebugModal from './components/DevDebugModal';
+import DebugPanelModal from './components/DebugPanelModal';
 import LoadGameModal from './components/LoadGameModal';
 import EquippedStatusModal from './components/EquippedStatusModal.tsx';
 import GameShell from './components/layout/GameShell';
@@ -65,6 +66,7 @@ import { StoredLocalAvatar, clearLocalAvatar, imageToPixelAvatarDataUrl, loadLoc
 import { DicebearProfile, buildDicebearAvatarUrl, loadDicebearProfile, saveDicebearProfile } from './lib/dicebearAvatar';
 import { getHelpText } from './lib/helpText';
 import { resolveIconComponent } from './lib/iconRegistry';
+import { canUseGodModeDebug } from './lib/devEnvironment';
 
 const initialAudioPrefs = loadAudioPreferences();
 
@@ -272,6 +274,7 @@ export default function App() {
   const [pendingCutsceneState, setPendingCutsceneState] = useState<GameState | null>(null);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [isEquippedModalOpen, setIsEquippedModalOpen] = useState(false);
+  const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const isNarrowMobile = useIsNarrowMobile();
   /** Fixed side drawers on small screens (game stays full-width until opened). */
@@ -688,20 +691,48 @@ export default function App() {
 
   const handleRebootConfirm = useCallback(() => {
     setInfoModalKind(null);
+    setIsDebugPanelOpen(false);
     setInputValue('');
     setSkipTypewriter(false);
     setState(INITIAL_STATE);
     audioService.stopAmbient();
   }, []);
 
-  const isDevDebugUi =
-    typeof window !== 'undefined' &&
-    (((import.meta as any).env?.DEV as boolean | undefined) || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+  const isDevDebugUi = canUseGodModeDebug();
+
+  const handleLoadFromSlot = useCallback((slotId: string) => {
+    const loaded = loadSaveSlot(slotId);
+    if (loaded) {
+      setIsLoadModalOpen(false);
+      setInputValue('');
+      setSuggestionHighlight(-1);
+      setState(loaded);
+    } else {
+      alert('Failed to load that save slot.');
+    }
+  }, []);
+
+  const handleDeleteSlot = useCallback((slotId: string) => {
+    deleteSaveSlot(slotId);
+    setSaveSlots(listSaveSlots());
+  }, []);
+
+  const handleCreateDebugCheckpoint = useCallback(() => {
+    setState((prev) => {
+      saveCheckpoint(prev);
+      return { ...prev, history: [...prev.history, sysLine('DEBUG: checkpoint created.')] };
+    });
+    setSaveSlots(listSaveSlots());
+  }, []);
 
   const infoModal = (
     <>
       {infoModalKind === 'log' && isDevDebugUi && (
-        <DevDebugModal state={state} onClose={() => setInfoModalKind(null)} />
+        <DevDebugModal
+          state={state}
+          onClose={() => setInfoModalKind(null)}
+          onOpenDebugPanel={() => setIsDebugPanelOpen(true)}
+        />
       )}
       {infoModalKind && infoModalKind !== 'log' && (
         <InfoModal
@@ -720,24 +751,28 @@ export default function App() {
       slots={saveSlots}
       dicebearProfile={dicebearProfile}
       onClose={() => setIsLoadModalOpen(false)}
-      onLoad={(slotId) => {
-        const loaded = loadSaveSlot(slotId);
-        if (loaded) {
-          setIsLoadModalOpen(false);
-          setInputValue('');
-          setSuggestionHighlight(-1);
-          setState(loaded);
-        } else {
-          alert('Failed to load that save slot.');
-        }
-      }}
-      onDeleteSlot={(slotId) => {
-        deleteSaveSlot(slotId);
-        setSaveSlots(listSaveSlots());
-      }}
+      onLoad={handleLoadFromSlot}
+      onDeleteSlot={handleDeleteSlot}
       onSaveSlotNote={(slotId, note) => {
         updateSaveSlotNote(slotId, note);
         setSaveSlots(listSaveSlots());
+      }}
+    />
+  );
+
+  const debugPanelModal = (
+    <DebugPanelModal
+      isOpen={isDebugPanelOpen && isDevDebugUi}
+      state={state}
+      saveSlots={saveSlots}
+      onClose={() => setIsDebugPanelOpen(false)}
+      onApplyState={(next) => setState(next)}
+      onSaveCheckpoint={handleCreateDebugCheckpoint}
+      onLoadSlot={handleLoadFromSlot}
+      onDeleteSlot={handleDeleteSlot}
+      onOpenDataLog={() => {
+        setIsDebugPanelOpen(false);
+        setInfoModalKind('log');
       }}
     />
   );
@@ -824,6 +859,14 @@ export default function App() {
           ? () => {
               setIsSettingsOpen(false);
               setInfoModalKind('log');
+            }
+          : undefined
+      }
+      onDebugPanel={
+        isDevDebugUi
+          ? () => {
+              setIsSettingsOpen(false);
+              setIsDebugPanelOpen(true);
             }
           : undefined
       }
@@ -959,6 +1002,7 @@ export default function App() {
         {loadModal}
         {equippedModal}
         {settingsModal}
+        {debugPanelModal}
         <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
       </>
     );
@@ -981,6 +1025,7 @@ export default function App() {
         {loadModal}
         {equippedModal}
         {settingsModal}
+        {debugPanelModal}
         <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
       </>
     );
@@ -1837,6 +1882,7 @@ export default function App() {
       <ModalLayer>
         {infoModal}
         {loadModal}
+        {debugPanelModal}
       </ModalLayer>
     </>
   );

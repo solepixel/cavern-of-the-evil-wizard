@@ -169,3 +169,35 @@ test('full bedroom-to-return-house branch remains stable and ends in death state
   const last = state.history[state.history.length - 1] ?? '';
   assert.ok(last.includes('YOU HAVE DIED.'));
 });
+
+test('cutscene option text can be replayed in destination gameplay scene', () => {
+  const inFairgrounds = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'fairgrounds',
+    history: [],
+  };
+
+  const replay = transitionCommand(inFairgrounds, 'explore fairground').state;
+  const appended = replay.history[replay.history.length - 1] ?? '';
+  assert.ok(appended.includes('At the center of the desolation, one machine remains:'));
+});
+
+test('cutscene options that route to another cutscene remain unrecognized outside source', () => {
+  const inFairgrounds = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'fairgrounds',
+    history: [],
+  };
+
+  const result = transitionCommand(inFairgrounds, 'pedal back home').state;
+  const appended = result.history[result.history.length - 1] ?? '';
+  assert.equal(appended, 'Command not recognized.');
+});

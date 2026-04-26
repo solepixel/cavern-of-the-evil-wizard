@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Volume2, VolumeX, Volume1, Save, LogOut, HelpCircle, Power, ScrollText } from 'lucide-react';
+import { X, Volume2, VolumeX, Volume1, Save, LogOut, HelpCircle, Power, ScrollText, Bug } from 'lucide-react';
 import { audioService } from '../lib/audioService';
 
 interface SettingsModalProps {
@@ -22,6 +22,7 @@ interface SettingsModalProps {
   onSystemReboot?: () => void;
   onHelp?: () => void;
   onDataLog?: () => void;
+  onDebugPanel?: () => void;
 }
 
 export default function SettingsModal({ 
@@ -42,6 +43,7 @@ export default function SettingsModal({
   onSystemReboot,
   onHelp,
   onDataLog,
+  onDebugPanel,
 }: SettingsModalProps) {
   const hoverUi = () => audioService.playHoverThrottled();
 
@@ -235,8 +237,22 @@ export default function SettingsModal({
               )}
             </div>
 
-            <div className="mt-8 pt-4 border-t border-border-base text-center">
+            <div className="mt-8 flex items-center justify-between border-t border-border-base pt-4">
               <div className="text-[10px] text-accent-cyan/50 uppercase tracking-[0.3em]">SENTIENT TERMINAL v1.9.88</div>
+              {onDebugPanel && (
+                <button
+                  type="button"
+                  onMouseEnter={hoverUi}
+                  onClick={() => {
+                    onClose();
+                    onDebugPanel();
+                  }}
+                  className="inline-flex items-center gap-1 border border-accent-cyan/50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan/15"
+                >
+                  <Bug size={12} />
+                  DEBUG
+                </button>
+              )}
             </div>
           </motion.div>
         </div>

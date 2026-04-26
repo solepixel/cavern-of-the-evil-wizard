@@ -108,6 +108,8 @@ const SFX_URLS: Record<string, string> = {
   crying_child: '/assets/audio/636956__sergequadrado__child-crying.wav',
 };
 
+export const AVAILABLE_SFX_IDS = Object.freeze(Object.keys(SFX_URLS).sort());
+
 // Simple Audio Service for retro sounds
 class AudioService {
   private ambient: HTMLAudioElement | null = null;

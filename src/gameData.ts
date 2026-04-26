@@ -927,7 +927,7 @@ export const SCENES: Record<string, Scene> = {
     exits: {},
     commands: {
       'EXPLORE FAIRGROUND': {
-        text: 'At the center of the desolation, one machine remains: Zoltar, waiting like a punchline.',
+        text: 'At the center of the desolation, one machine remains: [[Zoltar]], waiting like a punchline.',
         nextScene: 'fairgrounds',
       },
       'PEDAL BACK HOME': {

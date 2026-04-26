@@ -1057,8 +1057,38 @@ export function processCommand(state: GameState, input: string): GameState {
     }
   }
 
+  // Replay cutscene option narration in the destination gameplay scene.
+  // Only applies to cutscene options that emit text and resolve into a non-cutscene scene.
+  const cutsceneReplayText = resolveCutsceneCommandReplayText(newState.currentSceneId, command, replaceName);
+  if (cutsceneReplayText) {
+    newState.history.push(cutsceneReplayText);
+    return finish(newState);
+  }
+
   newState.history.push("Command not recognized.");
   return finish(newState);
+}
+
+function resolveCutsceneCommandReplayText(
+  currentSceneId: string,
+  command: string,
+  replaceName: (text: string) => string,
+): string | null {
+  for (const scene of Object.values(SCENES)) {
+    if (!scene.id.startsWith('cutscene_') || !scene.commands) continue;
+    for (const [key, response] of Object.entries(scene.commands)) {
+      if (!response.text || !response.nextScene) continue;
+      if (response.nextScene !== currentSceneId) continue;
+      if (response.nextScene.startsWith('cutscene_')) continue;
+      try {
+        const regex = new RegExp(`^${key}$`, 'i');
+        if (regex.test(command)) return replaceName(response.text);
+      } catch {
+        if (key.toLowerCase() === command.toLowerCase()) return replaceName(response.text);
+      }
+    }
+  }
+  return null;
 }
 
 function diffInventory(before: ItemId[], after: ItemId[]): { added: ItemId[]; removed: ItemId[] } {
