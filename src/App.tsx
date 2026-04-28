@@ -633,18 +633,18 @@ export default function App() {
   }, []);
 
   const startGame = () => {
-    setState((prev) => ({ ...prev, namingPhase: true }));
+    setState({ ...INITIAL_STATE, namingPhase: true });
   };
 
   const completeNaming = (name: string) => {
-    setState((prev) => ({
-      ...prev,
+    setState({
+      ...INITIAL_STATE,
       playerName: name,
       namingPhase: false,
       gameStarted: true,
       currentSceneId: 'cutscene_intro',
       history: [],
-    }));
+    });
   };
 
   const cancelNaming = useCallback(() => {

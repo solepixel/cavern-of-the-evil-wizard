@@ -18,6 +18,7 @@ import {
   setPlayerStateField,
   unequipItem,
 } from '../lib/debugActions';
+import { decodeSceneAreaLabel, getSceneAreaDisplayLabel } from '../lib/sceneAreaLabel';
 
 type TabId = 'navigation' | 'inventory' | 'player' | 'flags' | 'objects' | 'commands' | 'audio' | 'saves';
 
@@ -67,6 +68,7 @@ export default function DebugPanelModal({
   const hoverUi = () => audioService.playHoverThrottled();
   const [activeTab, setActiveTab] = useState<TabId>('navigation');
   const [sceneQuery, setSceneQuery] = useState('');
+  const [areaCodeInput, setAreaCodeInput] = useState(getSceneAreaDisplayLabel(state, state.currentSceneId));
   const [itemQuery, setItemQuery] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<ItemId>('');
   const [flagKey, setFlagKey] = useState('');
@@ -98,6 +100,7 @@ export default function DebugPanelModal({
   );
   const objectIds = useMemo(() => Object.keys(OBJECTS).sort(), []);
   const currentObjectState = objectId ? state.objectStates[objectId] : undefined;
+  const decodedAreaCode = useMemo(() => decodeSceneAreaLabel(areaCodeInput), [areaCodeInput]);
 
   const apply = (next: GameState) => onApplyState(next);
 
@@ -172,6 +175,48 @@ export default function DebugPanelModal({
                           <div className="text-[10px] text-text-primary/65">{SCENES[id].title}</div>
                         </button>
                       ))}
+                    </div>
+
+                    <div className="mt-4 rounded border border-border-base bg-bg-base p-3">
+                      <h4 className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Scene Status Code Decoder</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={areaCodeInput}
+                          onChange={(e) => setAreaCodeInput(e.target.value)}
+                          placeholder="e.g. 1AXBEDROOM"
+                          className="min-w-56 border border-border-base bg-bg-panel px-3 py-2 text-sm text-text-primary focus:border-accent-cyan focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onMouseEnter={hoverUi}
+                          onClick={() => setAreaCodeInput(getSceneAreaDisplayLabel(state, state.currentSceneId))}
+                          className="border border-accent-cyan/50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan/15"
+                        >
+                          Use Current AREA
+                        </button>
+                      </div>
+                      {!decodedAreaCode ? (
+                        <div className="mt-2 text-xs text-red-400">
+                          Invalid format. Use <code>CCXSCENE_ID</code> or <code>CCSCENE_ID</code> with two hex chars for CC.
+                        </div>
+                      ) : (
+                        <div className="mt-2 space-y-1 text-xs text-text-primary/85">
+                          <div>
+                            Status: <span className="font-mono text-accent-cyan">{decodedAreaCode.statusHex}</span> (byte {decodedAreaCode.statusByte})
+                          </div>
+                          <div>
+                            Scene: <span className="font-mono">{decodedAreaCode.sceneId || '(none provided)'}</span>
+                          </div>
+                          <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                            {decodedAreaCode.bitStates.map((entry) => (
+                              <div key={entry.bit} className="font-mono">
+                                bit {entry.bit}: {entry.enabled ? '1' : '0'} - {entry.label}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}

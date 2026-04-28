@@ -2,12 +2,73 @@ import { GameState } from '../types';
 import { OBJECTS } from '../gameData';
 import { DEFAULT_LEGACY_STATE_KEY, getObjectAxes } from './objectState';
 
+const BEDROOM_STATUS_BITS: string[] = [
+  'door unlocked',
+  'wardrobe door open',
+  'wardrobe key taken (contents empty)',
+  'rug flipped',
+  'rug quarter taken (contents empty)',
+  'bed made',
+];
+
+const PARENTS_BEDROOM_STATUS_BITS: string[] = [
+  'closet contents empty (clothes taken)',
+  'closet door open',
+  'rattle taken',
+  'sister quiet',
+];
+
 /**
  * Visible AREA chip + debug: `{CC}X{SCENE_ID}`.
  * `CC` is a stable 2-hex-digit code describing the scene's persisted state.
  */
 export function getSceneAreaDisplayLabel(state: GameState, sceneId: string): string {
   return `${getSceneStateCode2(state, sceneId)}X${sceneId.toUpperCase()}`;
+}
+
+export interface DecodedSceneAreaLabel {
+  raw: string;
+  statusHex: string;
+  statusByte: number;
+  sceneId: string;
+  matched: boolean;
+  bitStates: Array<{ bit: number; enabled: boolean; label: string }>;
+}
+
+export function decodeSceneAreaLabel(rawInput: string): DecodedSceneAreaLabel | null {
+  const raw = rawInput.trim().toUpperCase();
+  const m = raw.match(/^([0-9A-F]{2})X?([A-Z0-9_]+)?$/);
+  if (!m) return null;
+
+  const statusHex = m[1];
+  const statusByte = Number.parseInt(statusHex, 16);
+  const sceneId = (m[2] ?? '').toLowerCase();
+  const bitLabels = getSceneStatusBitLabels(sceneId);
+  const bitStates: Array<{ bit: number; enabled: boolean; label: string }> = bitLabels.map((label, bit) => ({
+    bit,
+    enabled: Boolean(statusByte & (1 << bit)),
+    label,
+  }));
+
+  return {
+    raw,
+    statusHex,
+    statusByte,
+    sceneId,
+    matched: Boolean(sceneId),
+    bitStates,
+  };
+}
+
+function getSceneStatusBitLabels(sceneId: string): string[] {
+  switch (sceneId) {
+    case 'bedroom':
+      return BEDROOM_STATUS_BITS;
+    case 'parents_bedroom':
+      return PARENTS_BEDROOM_STATUS_BITS;
+    default:
+      return Array.from({ length: 8 }, (_, i) => `unknown bit ${i}`);
+  }
 }
 
 function getSceneStateCode2(state: GameState, sceneId: string): string {

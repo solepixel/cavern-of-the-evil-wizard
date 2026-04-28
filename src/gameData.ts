@@ -108,10 +108,67 @@ export const ITEMS: Record<string, Item> = {
   },
   'map': {
     id: 'map',
-    name: 'Neighborhood Map',
-    description: 'A hand-drawn map showing the way to Sea Point Park.',
-    useText: 'You consult the map. The carnival is definitely to the north.',
+    name: 'Chief\'s World Map',
+    description: 'A weathered map from the Ice Dwarf Chief. Regions sharpen as you discover them.',
+    useText: 'You unfold the world map. Inked routes pulse brighter where you have traveled.',
     icon: 'Map',
+  },
+  'ice_staff': {
+    id: 'ice_staff',
+    name: 'Staff of the Ice Wizard',
+    description: 'A frost-lined staff crowned with a blue stone that hums with cold authority.',
+    useText: 'You brace the Ice Staff in both hands. The blue stone answers with a thin halo of rime.',
+    icon: 'Wand2',
+  },
+  'water_staff': {
+    id: 'water_staff',
+    name: 'Staff of the Water Wizard',
+    description: 'A river-carved staff set with a green stone that swirls like deep current.',
+    useText: 'The Water Staff grows cool and damp against your palm. The green stone ripples like a tidepool.',
+    icon: 'Wand2',
+  },
+  'fire_staff': {
+    id: 'fire_staff',
+    name: 'Staff of the Fire Wizard',
+    description: 'A blackened staff fitted with a red stone that glows like banked coals.',
+    useText: 'Heat licks across your knuckles as the Fire Staff wakes. The red stone pulses like a furnace.',
+    icon: 'Wand2',
+  },
+  'special_gloves': {
+    id: 'special_gloves',
+    name: 'Special Thermal Gloves',
+    description: 'Insulated gauntlets etched with dwarf sigils for handling unstable relic tech.',
+    useText: 'You cinch the thermal gloves tight. Your grip stops trembling.',
+    icon: 'Hand',
+    itemType: 'gear',
+    gearSlot: 'hands',
+    equippable: true,
+    equipmentSlot: 'hands',
+    wearDescription: 'Thermal gloves shield your hands from brutal cold and volatile machinery.',
+  },
+  'scuba_gear': {
+    id: 'scuba_gear',
+    name: 'Dwarven Scuba Rig',
+    description: 'A compact rebreather harness and mask tuned for cavern currents.',
+    useText: 'You fit the scuba rig and test the valves. Breathing steadies under pressure.',
+    icon: 'Shield',
+    itemType: 'gear',
+    gearSlot: 'head',
+    equippable: true,
+    equipmentSlot: 'head',
+    wearDescription: 'A dwarven scuba rig seals your head and lungs for deep water routes.',
+  },
+  'protection_cloak': {
+    id: 'protection_cloak',
+    name: 'Protection Cloak',
+    description: 'A heat-shedding cloak woven with ember-resistant thread.',
+    useText: 'You sweep the cloak around your shoulders. The fabric drinks in the nearby heat.',
+    icon: 'Shield',
+    itemType: 'gear',
+    gearSlot: 'torso',
+    equippable: true,
+    equipmentSlot: 'torso',
+    wearDescription: 'A protection cloak drapes over your torso, warding off fierce heat.',
   },
   'training_sword': {
     id: 'training_sword',
@@ -715,6 +772,11 @@ export const OBJECTS: Record<string, GameObject> = {
             next.pendingItem = 'ice_relic';
             next.uiVisible = true;
           }
+          if (!next.inventory.includes('ice_staff')) {
+            next.inventory = [...next.inventory, 'ice_staff'];
+            next.uiVisible = true;
+          }
+          next.flags = { ...next.flags, ice_wizard_defeated: true };
           return simpleSceneEntry(next, 'relic_escape');
         },
       },
@@ -981,21 +1043,51 @@ export const SCENES: Record<string, Scene> = {
         scoreDelta: 10,
       },
       train: {
-        text: 'You drill forms until your breath ghosts in the air. The dwarves nod—barely impressed, but not disappointed.',
-        scoreDelta: 15,
+        callback: (s) => {
+          if (s.flags.ice_training_complete) {
+            return {
+              ...s,
+              history: [...s.history, 'You run the forms again. The chief nods once: "Muscle memory beats panic."'],
+            };
+          }
+          return {
+            ...s,
+            flags: { ...s.flags, ice_training_complete: true },
+            history: [
+              ...s.history,
+              'You drill forms until your breath ghosts in the air. The chief finally raps your shoulder: "Good enough to survive."',
+            ],
+            score: (s.score ?? 0) + 15,
+          };
+        },
       },
       '(take|accept) sword': {
         callback: (s) => {
+          if (!s.flags.ice_training_complete) {
+            return {
+              ...s,
+              history: [...s.history, 'The chief blocks your hand. "Train first. Dead heroes are useless heroes."'],
+            };
+          }
           if (s.inventory.includes('training_sword')) {
             return { ...s, history: [...s.history, 'You already have a training sword. The chief is not handing out seconds.'] };
           }
           audioService.playSound('achievement');
+          const nextInventory = [...s.inventory, 'training_sword'];
+          if (!nextInventory.includes('map')) {
+            nextInventory.push('map');
+          }
           return {
             ...s,
-            inventory: [...s.inventory, 'training_sword'],
+            inventory: nextInventory,
             pendingItem: 'training_sword',
+            hasMap: true,
             uiVisible: true,
-            history: [...s.history, 'The chief slaps a notched training sword into your hands. "Try not to embarrass us."'],
+            flags: { ...s.flags, map_unlocked: true, ice_first_quest_sent: true },
+            history: [
+              ...s.history,
+              'The chief slaps a notched training sword into your hands, then shoves a creased world map at your chest. "First side quest: claim what you need at the pass, then hunt the wizard. The map will reveal itself as you survive."',
+            ],
             score: (s.score ?? 0) + 20,
           };
         },
@@ -1140,10 +1232,126 @@ export const SCENES: Record<string, Scene> = {
       '(give|hand|return) relic': {
         text: 'You place the thawed relic in the chief\'s hands. The air itself seems to exhale. Balance returns—cold, sharp, and honest.',
         removeItem: 'ice_relic',
-        nextScene: 'ending_fair_return',
+        nextScene: 'crossroads',
         scoreDelta: 500,
         missingRequirementsMessage: "You don't have the relic to return.",
       },
+    },
+  },
+  'crossroads': {
+    id: 'crossroads',
+    title: 'Fourfold Crossroads',
+    description:
+      'Stone waymarkers split the world: NORTH to the Ice Dwarves, WEST toward river thunder, SOUTH toward volcanic glare, EAST to the mountain summit.',
+    image: 'https://picsum.photos/seed/fourfold-crossroads/800/600',
+    isCheckpoint: true,
+    objects: [],
+    exits: { north: 'ice_dwarf_village' },
+    commands: {
+      '(go|walk|head) north': {
+        text: 'You take the northern road back toward familiar snow huts.',
+        nextScene: 'ice_dwarf_village',
+      },
+      '(go|walk|head) west': {
+        callback: (s) => {
+          if (!s.inventory.includes('ice_staff')) {
+            return {
+              ...s,
+              isGameOver: true,
+              hp: 0,
+              history: [
+                ...s.history,
+                'You push west into the floodplain. The current seizes you instantly, drags you under, and the world turns to roaring black water.',
+                FATAL_PREFIX + 'YOU HAVE DIED.',
+              ],
+            };
+          }
+          return simpleSceneEntry(
+            s,
+            'water_village',
+            'The Ice Staff glows blue at your side, carving a safe channel through the torrent.',
+            'crossroads',
+          );
+        },
+      },
+      '(go|walk|head) south': {
+        callback: (s) => {
+          if (!s.inventory.includes('water_staff')) {
+            return {
+              ...s,
+              isGameOver: true,
+              hp: 0,
+              history: [
+                ...s.history,
+                'You descend toward the volcano. A blast of heat strips the breath from your lungs before you take ten steps.',
+                FATAL_PREFIX + 'YOU HAVE DIED.',
+              ],
+            };
+          }
+          return simpleSceneEntry(
+            s,
+            'fire_village',
+            'The Water Staff hums with a cooling pulse, holding the worst of the heat at bay.',
+            'crossroads',
+          );
+        },
+      },
+      '(go|walk|head) east': {
+        callback: (s) => {
+          const equipped = new Set(s.equippedItemIds ?? []);
+          const canTraverse =
+            equipped.has('special_gloves') && equipped.has('scuba_gear') && equipped.has('protection_cloak');
+          if (!canTraverse) {
+            return {
+              ...s,
+              isGameOver: true,
+              hp: 0,
+              history: [
+                ...s.history,
+                'You attempt the summit climb unprepared. Ice, steam, and gale hit at once. The mountain rejects you.',
+                FATAL_PREFIX + 'YOU HAVE DIED.',
+              ],
+            };
+          }
+          return simpleSceneEntry(s, 'summit_gate', 'Fully geared, you step onto the eastern ascent.', 'crossroads');
+        },
+      },
+    },
+  },
+  'water_village': {
+    id: 'water_village',
+    title: 'Water Dwarf Village',
+    description:
+      'Terraced docks cling to a canyon lake. A waterfall thunders nearby, and the dwarves watch you like they expected this exact moment.',
+    image: 'https://picsum.photos/seed/water-village/800/600',
+    objects: [],
+    exits: { east: 'crossroads' },
+    commands: {
+      '(go|walk|head) east': { text: 'You retreat to the crossroads to plan your next move.', nextScene: 'crossroads' },
+    },
+  },
+  'fire_village': {
+    id: 'fire_village',
+    title: 'Fire Dwarf Village',
+    description:
+      'Blackstone homes ring a lava caldera. Every breath tastes of ash and iron, and every face here has seen the volcano wake.',
+    image: 'https://picsum.photos/seed/fire-village/800/600',
+    objects: [],
+    exits: { north: 'crossroads' },
+    commands: {
+      '(go|walk|head) north': { text: 'You make for cooler air back at the crossroads.', nextScene: 'crossroads' },
+    },
+  },
+  'summit_gate': {
+    id: 'summit_gate',
+    title: 'Summit Gate',
+    description:
+      'Ancient runes encircle a stone dais. Three staff sockets wait around a central seal that feels older than language.',
+    image: 'https://picsum.photos/seed/summit-gate/800/600',
+    objects: [],
+    exits: { west: 'crossroads' },
+    commands: {
+      '(go|walk|head) west': { text: 'You descend carefully back to the crossroads.', nextScene: 'crossroads' },
     },
   },
   'ending_fair_return': {

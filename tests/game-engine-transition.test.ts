@@ -201,3 +201,70 @@ test('cutscene options that route to another cutscene remain unrecognized outsid
   const appended = result.history[result.history.length - 1] ?? '';
   assert.equal(appended, 'Command not recognized.');
 });
+
+test('ice chief grants map after training and sword handoff', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'ice_dwarf_village',
+    history: [],
+    inventory: [],
+    flags: {},
+  };
+
+  const tooSoon = transitionCommand(start, 'take sword').state;
+  assert.equal(tooSoon.inventory.includes('map'), false);
+
+  const trained = transitionCommand(tooSoon, 'train').state;
+  const armed = transitionCommand(trained, 'take sword').state;
+  assert.equal(armed.inventory.includes('training_sword'), true);
+  assert.equal(armed.inventory.includes('map'), true);
+  assert.equal(armed.hasMap, true);
+  assert.equal(Boolean(armed.flags.map_unlocked), true);
+});
+
+test('map command reports location and fog-of-war state', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'ice_dwarf_village',
+    history: [],
+    hasMap: true,
+    flags: { visited_ice_region: true, visited_crossroads: true },
+  };
+
+  const mapped = transitionCommand(start, 'map').state;
+  const out = mapped.history[mapped.history.length - 1] ?? '';
+  assert.ok(out.includes('WORLD MAP (ZOLTAR EDITION)'));
+  assert.ok(out.includes('CURRENT REGION: ICE REGION'));
+  assert.ok(out.includes('NORTH   - ICE DWARF VILLAGE: [YOU ARE HERE]'));
+  assert.ok(out.includes('WEST    - WATER DWARF VILLAGE: ???'));
+});
+
+test('crossroads west path requires ice staff or dies', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'crossroads',
+    history: [],
+    inventory: [],
+  };
+
+  const dead = transitionCommand(start, 'go west').state;
+  assert.equal(dead.isGameOver, true);
+  assert.equal(dead.hp, 0);
+
+  const staffStart = { ...start, inventory: ['ice_staff'] };
+  const survived = transitionCommand(staffStart, 'go west').state;
+  assert.equal(survived.isGameOver, false);
+  assert.equal(survived.currentSceneId, 'water_village');
+});

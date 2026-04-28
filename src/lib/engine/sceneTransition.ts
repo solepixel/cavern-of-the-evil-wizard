@@ -33,6 +33,40 @@ function itemAnimationTarget(items: Record<string, Item>, itemId: string): 'inve
   return t === 'gear' || t === 'weapon' ? 'equipment' : 'inventory';
 }
 
+function isMapItemId(itemId: string): boolean {
+  return itemId === 'map' || itemId === 'world_map';
+}
+
+function visitedRegionFlagForScene(sceneId: string): string | null {
+  if (
+    sceneId === 'ice_dwarf_village' ||
+    sceneId === 'icy_pass' ||
+    sceneId === 'glacial_armory' ||
+    sceneId === 'ice_cavern_gate' ||
+    sceneId === 'ice_wizard_arena' ||
+    sceneId === 'relic_escape' ||
+    sceneId === 'bandit_pass' ||
+    sceneId === 'ice_dwarf_village_final'
+  ) {
+    return 'visited_ice_region';
+  }
+  if (sceneId === 'crossroads' || sceneId === 'crossroads_map_overlook') return 'visited_crossroads';
+  if (sceneId.startsWith('water_')) return 'visited_water_region';
+  if (sceneId.startsWith('fire_')) return 'visited_fire_region';
+  if (sceneId.startsWith('summit_') || sceneId === 'final_wizard_arena') return 'visited_summit_region';
+  if (sceneId === 'fairgrounds' || sceneId === 'cutscene_bike_to_fairgrounds') return 'visited_fair_region';
+  if (
+    sceneId === 'bedroom' ||
+    sceneId === 'hallway' ||
+    sceneId === 'bathroom_hall' ||
+    sceneId === 'parents_bedroom' ||
+    sceneId === 'cutscene_house_escape'
+  ) {
+    return 'visited_house_region';
+  }
+  return null;
+}
+
 export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTransitionOptions): SceneTransitionResult {
   const {
     state,
@@ -70,6 +104,10 @@ export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTra
   if (fromSceneId !== undefined && fromSceneId !== sceneId) {
     next = { ...next, focusedObjectId: undefined };
   }
+  const visitedFlag = visitedRegionFlagForScene(sceneId);
+  if (visitedFlag) {
+    next.flags[visitedFlag] = true;
+  }
 
   let implicitScore = implicitCarry;
 
@@ -90,8 +128,9 @@ export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTra
         ...(next.pendingItemQueue ?? []),
         { id: scene.onLoad.getItem, target: itemAnimationTarget(deps.items, scene.onLoad.getItem) },
       ];
-      if (scene.onLoad.getItem === 'map') {
+      if (isMapItemId(scene.onLoad.getItem)) {
         next.hasMap = true;
+        next.flags.map_unlocked = true;
       }
       implicitScore += deps.scorePickupItem;
     }

@@ -523,6 +523,58 @@ function itemAnimationTarget(itemId: ItemId): 'inventory' | 'equipment' {
   return t === 'gear' || t === 'weapon' ? 'equipment' : 'inventory';
 }
 
+function isMapItemId(itemId: ItemId): boolean {
+  return itemId === 'map' || itemId === 'world_map';
+}
+
+function currentRegionLabel(sceneId: string): string {
+  if (
+    sceneId === 'ice_dwarf_village' ||
+    sceneId === 'icy_pass' ||
+    sceneId === 'glacial_armory' ||
+    sceneId === 'ice_cavern_gate' ||
+    sceneId === 'ice_wizard_arena' ||
+    sceneId === 'relic_escape' ||
+    sceneId === 'bandit_pass' ||
+    sceneId === 'ice_dwarf_village_final'
+  ) {
+    return 'ICE REGION';
+  }
+  if (sceneId === 'crossroads' || sceneId === 'crossroads_map_overlook') return 'CROSSROADS';
+  if (sceneId.startsWith('water_')) return 'WATER REGION';
+  if (sceneId.startsWith('fire_')) return 'FIRE REGION';
+  if (sceneId.startsWith('summit_') || sceneId === 'final_wizard_arena') return 'SUMMIT';
+  if (sceneId === 'fairgrounds' || sceneId.startsWith('cutscene_')) return 'OUTER REALM';
+  return 'HOUSE';
+}
+
+function mapLine(label: string, discovered: boolean, current: boolean): string {
+  if (!discovered && !current) return `${label}: ???`;
+  return `${label}: ${current ? '[YOU ARE HERE]' : 'DISCOVERED'}`;
+}
+
+function buildMapView(state: GameState): string {
+  const current = currentRegionLabel(state.currentSceneId);
+  const discovered = {
+    crossroads: Boolean(state.flags.visited_crossroads),
+    ice: Boolean(state.flags.visited_ice_region),
+    water: Boolean(state.flags.visited_water_region),
+    fire: Boolean(state.flags.visited_fire_region),
+    summit: Boolean(state.flags.visited_summit_region),
+  };
+  const lines = [
+    'WORLD MAP (ZOLTAR EDITION)',
+    `CURRENT REGION: ${current}`,
+    '',
+    mapLine('CENTER  - CROSSROADS', discovered.crossroads, current === 'CROSSROADS'),
+    mapLine('NORTH   - ICE DWARF VILLAGE', discovered.ice, current === 'ICE REGION'),
+    mapLine('WEST    - WATER DWARF VILLAGE', discovered.water, current === 'WATER REGION'),
+    mapLine('SOUTH   - FIRE DWARF VILLAGE', discovered.fire, current === 'FIRE REGION'),
+    mapLine('EAST    - SUMMIT', discovered.summit, current === 'SUMMIT'),
+  ];
+  return lines.join('\n');
+}
+
 function queueNewInventoryAnimations(prevInventory: ItemId[], state: GameState): GameState {
   const prevSet = new Set(prevInventory);
   const added = state.inventory.filter((id) => !prevSet.has(id));
@@ -803,7 +855,15 @@ export function processCommand(state: GameState, input: string): GameState {
     {
       id: 'map',
       patterns: ['^(map|m|view\\s+map)$'],
-      run: (s) => ({ ...s, history: [...s.history, "You don't have a map yet, but you remember the layout of your house."] }),
+      run: (s) => {
+        if (!s.hasMap) {
+          return {
+            ...s,
+            history: [...s.history, "You don't have a map yet. For now, you're navigating by memory and panic."],
+          };
+        }
+        return { ...s, history: [...s.history, buildMapView(s)] };
+      },
     },
     {
       id: 'volume_up',
@@ -1169,7 +1229,10 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
       newState.inventory = [...newState.inventory, interaction.getItem];
       newState.uiVisible = true;
       newState.pendingItem = interaction.getItem;
-      if (interaction.getItem === 'map') newState.hasMap = true;
+      if (isMapItemId(interaction.getItem)) {
+        newState.hasMap = true;
+        newState.flags = { ...newState.flags, map_unlocked: true };
+      }
       implicitScore += SCORE_PICKUP_ITEM;
     }
   }
@@ -1263,7 +1326,10 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
       newState.inventory = [...newState.inventory, response.getItem];
       newState.uiVisible = true;
       newState.pendingItem = response.getItem;
-      if (response.getItem === 'map') newState.hasMap = true;
+      if (isMapItemId(response.getItem)) {
+        newState.hasMap = true;
+        newState.flags = { ...newState.flags, map_unlocked: true };
+      }
       implicitScore += SCORE_PICKUP_ITEM;
     }
   }
