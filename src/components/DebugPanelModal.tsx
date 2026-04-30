@@ -5,6 +5,7 @@ import { ITEMS, OBJECTS, SCENES } from '../gameData';
 import { audioService, AVAILABLE_SFX_IDS } from '../lib/audioService';
 import { SaveSlotSummary } from '../lib/gameEngine';
 import { GameState, ItemId } from '../types';
+import { SCORE_PICKUP_ITEM, resolveFirstEnterSceneScore } from '../lib/gameScoring';
 import {
   addInventoryItems,
   deleteFlag,
@@ -20,7 +21,7 @@ import {
 } from '../lib/debugActions';
 import { decodeSceneAreaLabel, getSceneAreaDisplayLabel } from '../lib/sceneAreaLabel';
 
-type TabId = 'navigation' | 'inventory' | 'player' | 'flags' | 'objects' | 'commands' | 'audio' | 'saves';
+type TabId = 'navigation' | 'scenes' | 'inventory' | 'player' | 'flags' | 'objects' | 'commands' | 'audio' | 'saves';
 
 interface DebugPanelModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ interface DebugPanelModalProps {
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'navigation', label: 'Navigation' },
+  { id: 'scenes', label: 'Scenes' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'player', label: 'Player' },
   { id: 'flags', label: 'Flags' },
@@ -55,6 +57,145 @@ function parseFlagValue(raw: string): boolean | number | string {
   const n = Number(raw);
   if (!Number.isNaN(n) && raw.trim() !== '') return n;
   return raw;
+}
+
+type SceneGroup = { id: string; label: string; sceneIds: string[] };
+type SceneScoreSummary = {
+  sceneId: string;
+  maxScenePoints: number;
+  cumulativeMaxPoints: number;
+  breakdown: Array<{ label: string; points: number }>;
+};
+
+const SCENE_GROUP_PRESET: SceneGroup[] = [
+  {
+    id: 'house',
+    label: 'House Arc',
+    sceneIds: [
+      'cutscene_intro',
+      'bedroom',
+      'hallway',
+      'bathroom_hall',
+      'parents_bedroom',
+      'cutscene_house_escape',
+      'cutscene_bike_to_fairgrounds',
+      'fairgrounds',
+      'cutscene_into_movie_game',
+    ],
+  },
+  {
+    id: 'ice',
+    label: 'Ice Quest Arc',
+    sceneIds: [
+      'ice_dwarf_village',
+      'icy_pass',
+      'glacial_armory',
+      'ice_cavern_gate',
+      'ice_wizard_arena',
+      'relic_escape',
+      'bandit_pass',
+      'ice_dwarf_village_final',
+    ],
+  },
+  {
+    id: 'world',
+    label: 'Crossroads & Regions',
+    sceneIds: ['crossroads', 'water_village', 'fire_village', 'summit_gate'],
+  },
+  {
+    id: 'ending',
+    label: 'Ending',
+    sceneIds: ['ending_fair_return'],
+  },
+];
+
+function buildSceneGroups(): SceneGroup[] {
+  const allIds = new Set(Object.keys(SCENES));
+  const base = SCENE_GROUP_PRESET.map((g) => ({
+    ...g,
+    sceneIds: g.sceneIds.filter((id) => allIds.has(id)),
+  })).filter((g) => g.sceneIds.length > 0);
+  for (const g of base) {
+    for (const id of g.sceneIds) allIds.delete(id);
+  }
+  if (allIds.size > 0) {
+    base.push({
+      id: 'other',
+      label: 'Other / Unsorted',
+      sceneIds: Array.from(allIds).sort(),
+    });
+  }
+  return base;
+}
+
+function buildSceneScoreSummaries(groups: SceneGroup[]): Record<string, SceneScoreSummary> {
+  const orderedSceneIds = groups.flatMap((g) => g.sceneIds);
+  const out: Record<string, SceneScoreSummary> = {};
+  let runningTotal = 0;
+
+  for (const sceneId of orderedSceneIds) {
+    const scene = SCENES[sceneId];
+    if (!scene) continue;
+    const breakdown: Array<{ label: string; points: number }> = [];
+    let maxScenePoints = 0;
+
+    const firstEnterScore = resolveFirstEnterSceneScore(scene.firstEnterScore);
+    if (firstEnterScore > 0) {
+      breakdown.push({ label: 'First-time scene entry bonus', points: firstEnterScore });
+      maxScenePoints += firstEnterScore;
+    }
+
+    const pickupIds = new Set<string>();
+    if (scene.onLoad?.getItem) pickupIds.add(scene.onLoad.getItem);
+
+    for (const objId of scene.objects ?? []) {
+      const obj = OBJECTS[objId];
+      if (!obj) continue;
+      const interactionScoreKeys = new Set<string>();
+      for (const it of obj.interactions ?? []) {
+        if (typeof it.scoreDelta === 'number' && it.scoreDelta > 0) {
+          const scoreKey = it.id ? `${objId}:${it.id}` : `${objId}:${it.regex}`;
+          if (!interactionScoreKeys.has(scoreKey)) {
+            interactionScoreKeys.add(scoreKey);
+            maxScenePoints += it.scoreDelta;
+            breakdown.push({
+              label: `Object action: ${(obj.name || objId).toUpperCase()} (${it.id ?? it.regex})`,
+              points: it.scoreDelta,
+            });
+          }
+        }
+        if (it.getItem) pickupIds.add(it.getItem);
+      }
+    }
+
+    const commandScoreKeys = new Set<string>();
+    for (const [commandKey, response] of Object.entries(scene.commands ?? {})) {
+      if (typeof response.scoreDelta === 'number' && response.scoreDelta > 0 && !commandScoreKeys.has(commandKey)) {
+        commandScoreKeys.add(commandKey);
+        maxScenePoints += response.scoreDelta;
+        breakdown.push({ label: `Scene command: ${commandKey}`, points: response.scoreDelta });
+      }
+      if (response.getItem) pickupIds.add(response.getItem);
+    }
+
+    if (pickupIds.size > 0) {
+      const pickupPoints = pickupIds.size * SCORE_PICKUP_ITEM;
+      maxScenePoints += pickupPoints;
+      breakdown.push({
+        label: `Unique item pickups in scene (${pickupIds.size} x ${SCORE_PICKUP_ITEM})`,
+        points: pickupPoints,
+      });
+    }
+
+    runningTotal += maxScenePoints;
+    out[sceneId] = {
+      sceneId,
+      maxScenePoints,
+      cumulativeMaxPoints: runningTotal,
+      breakdown,
+    };
+  }
+  return out;
 }
 
 export default function DebugPanelModal({
@@ -74,6 +215,8 @@ export default function DebugPanelModal({
   const hoverUi = () => audioService.playHoverThrottled();
   const [activeTab, setActiveTab] = useState<TabId>('navigation');
   const [sceneQuery, setSceneQuery] = useState('');
+  const [selectedSceneId, setSelectedSceneId] = useState(state.currentSceneId);
+  const [navSceneId, setNavSceneId] = useState(state.currentSceneId);
   const [areaCodeInput, setAreaCodeInput] = useState(getSceneAreaDisplayLabel(state, state.currentSceneId));
   const [itemQuery, setItemQuery] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<ItemId>('');
@@ -87,13 +230,26 @@ export default function DebugPanelModal({
   const [sfxId, setSfxId] = useState(AVAILABLE_SFX_IDS[0] ?? 'click');
   const [playerName, setPlayerName] = useState(state.playerName);
 
-  const sceneIds = useMemo(
-    () =>
-      Object.keys(SCENES)
-        .filter((id) => id.toLowerCase().includes(sceneQuery.toLowerCase()))
-        .sort(),
-    [sceneQuery],
+  const sceneGroups = useMemo(() => buildSceneGroups(), []);
+  const orderedSceneIds = useMemo(() => sceneGroups.flatMap((g) => g.sceneIds), [sceneGroups]);
+  const sceneScoreById = useMemo(() => buildSceneScoreSummaries(sceneGroups), [sceneGroups]);
+  const totalMaxScore = useMemo(
+    () => orderedSceneIds.reduce((sum, id) => sum + (sceneScoreById[id]?.maxScenePoints ?? 0), 0),
+    [orderedSceneIds, sceneScoreById],
   );
+  const filteredSceneGroups = useMemo(() => {
+    const q = sceneQuery.trim().toLowerCase();
+    if (!q) return sceneGroups;
+    return sceneGroups
+      .map((g) => ({
+        ...g,
+        sceneIds: g.sceneIds.filter((id) => {
+          const s = SCENES[id];
+          return id.toLowerCase().includes(q) || (s?.title ?? '').toLowerCase().includes(q);
+        }),
+      }))
+      .filter((g) => g.sceneIds.length > 0);
+  }, [sceneGroups, sceneQuery]);
   const itemIds = useMemo(
     () =>
       Object.keys(ITEMS)
@@ -107,6 +263,8 @@ export default function DebugPanelModal({
   const objectIds = useMemo(() => Object.keys(OBJECTS).sort(), []);
   const currentObjectState = objectId ? state.objectStates[objectId] : undefined;
   const decodedAreaCode = useMemo(() => decodeSceneAreaLabel(areaCodeInput), [areaCodeInput]);
+  const selectedScene = SCENES[selectedSceneId];
+  const selectedSceneScore = sceneScoreById[selectedSceneId];
 
   const apply = (next: GameState) => onApplyState(next);
 
@@ -161,26 +319,40 @@ export default function DebugPanelModal({
               <main className="min-h-0 flex-1 overflow-y-auto p-4">
                 {activeTab === 'navigation' && (
                   <section className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Filter scenes..."
-                      value={sceneQuery}
-                      onChange={(e) => setSceneQuery(e.target.value)}
-                      className="w-full border border-border-base bg-bg-base px-3 py-2 text-sm text-text-primary focus:border-accent-cyan focus:outline-none"
-                    />
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {sceneIds.map((id) => (
+                    <div className="rounded border border-border-base bg-bg-base p-3">
+                      <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Quick Jump</div>
+                      <div className="flex flex-wrap gap-2">
+                        <select
+                          value={navSceneId}
+                          onChange={(e) => setNavSceneId(e.target.value)}
+                          className="min-w-72 border border-border-base bg-bg-panel px-3 py-2 text-sm text-text-primary"
+                        >
+                          {orderedSceneIds.map((id) => (
+                            <option key={id} value={id}>
+                              {id} - {SCENES[id]?.title ?? '(unknown)'}
+                            </option>
+                          ))}
+                        </select>
                         <button
-                          key={id}
                           type="button"
                           onMouseEnter={hoverUi}
-                          onClick={() => apply(jumpToScene(state, id))}
-                          className="border border-accent-cyan/30 bg-bg-base px-3 py-2 text-left text-xs uppercase tracking-wide text-accent-cyan hover:border-accent-cyan hover:bg-bg-muted"
+                          onClick={() => navSceneId && apply(jumpToScene(state, navSceneId))}
+                          className="border border-accent-cyan px-3 py-2 text-xs font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-bg-base"
                         >
-                          <div className="font-black">{id}</div>
-                          <div className="text-[10px] text-text-primary/65">{SCENES[id].title}</div>
+                          Jump To Scene
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onMouseEnter={hoverUi}
+                          onClick={() => {
+                            setNavSceneId(state.currentSceneId);
+                            setSelectedSceneId(state.currentSceneId);
+                          }}
+                          className="border border-border-base px-3 py-2 text-xs font-black uppercase tracking-widest text-text-primary/80 hover:border-accent-cyan/50"
+                        >
+                          Use Current
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-4 rounded border border-border-base bg-bg-base p-3">
@@ -224,6 +396,104 @@ export default function DebugPanelModal({
                         </div>
                       )}
                     </div>
+                  </section>
+                )}
+
+                {activeTab === 'scenes' && (
+                  <section className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                    <div className="min-h-0 space-y-3">
+                      <div className="rounded border border-border-base bg-bg-base p-3">
+                        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Scene Browser</div>
+                        <input
+                          type="text"
+                          placeholder="Filter scene id or title..."
+                          value={sceneQuery}
+                          onChange={(e) => setSceneQuery(e.target.value)}
+                          className="w-full border border-border-base bg-bg-panel px-3 py-2 text-sm text-text-primary focus:border-accent-cyan focus:outline-none"
+                        />
+                        <div className="mt-2 text-xs text-text-primary/70">
+                          Max total score (all scene-max points): <span className="font-black text-accent-cyan">{totalMaxScore}</span>
+                        </div>
+                      </div>
+
+                      <div className="max-h-[52dvh] space-y-3 overflow-auto pr-1">
+                        {filteredSceneGroups.map((group) => (
+                          <div key={group.id} className="rounded border border-border-base bg-bg-base p-2">
+                            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-cyan/80">{group.label}</div>
+                            <div className="space-y-1">
+                              {group.sceneIds.map((id) => {
+                                const meta = sceneScoreById[id];
+                                const isSelected = id === selectedSceneId;
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onMouseEnter={hoverUi}
+                                    onClick={() => setSelectedSceneId(id)}
+                                    className={`w-full border px-3 py-2 text-left text-xs ${
+                                      isSelected
+                                        ? 'border-accent-cyan bg-bg-panel text-accent-cyan'
+                                        : 'border-border-base text-text-primary/85 hover:border-accent-cyan/55 hover:bg-bg-panel'
+                                    }`}
+                                  >
+                                    <div className="font-black uppercase tracking-wide">{id}</div>
+                                    <div className="text-[10px] text-text-primary/65">{SCENES[id]?.title}</div>
+                                    <div className="mt-1 text-[10px] text-accent-magenta/90">
+                                      Scene max: {meta?.maxScenePoints ?? 0} | Total by here: {meta?.cumulativeMaxPoints ?? 0}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <aside className="min-h-0 rounded border border-border-base bg-bg-base p-3">
+                      {selectedScene ? (
+                        <div className="flex h-full min-h-72 flex-col">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-accent-magenta">Scene Details</div>
+                          <div className="mt-2 text-sm font-black uppercase text-accent-cyan">{selectedScene.id}</div>
+                          <div className="text-xs text-text-primary/75">{selectedScene.title}</div>
+                          <div className="mt-2 text-xs text-text-primary/80">
+                            Objects: {selectedScene.objects?.length ?? 0} | Exits: {Object.keys(selectedScene.exits ?? {}).length}
+                          </div>
+                          <div className="mt-2 rounded border border-border-base bg-bg-panel p-2 text-xs">
+                            <div>
+                              Max points (scene):{' '}
+                              <span className="font-black text-accent-cyan">{selectedSceneScore?.maxScenePoints ?? 0}</span>
+                            </div>
+                            <div>
+                              Max total by this scene:{' '}
+                              <span className="font-black text-accent-cyan">{selectedSceneScore?.cumulativeMaxPoints ?? 0}</span>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[10px] uppercase tracking-wide text-text-primary/65">Description</div>
+                          <div className="max-h-36 overflow-auto border border-border-base bg-bg-panel p-2 text-xs text-text-primary/80">
+                            {selectedScene.description}
+                          </div>
+                          <div className="mt-2 text-[10px] uppercase tracking-wide text-text-primary/65">Score Breakdown</div>
+                          <div className="max-h-44 flex-1 overflow-auto border border-border-base bg-bg-panel p-2 text-xs text-text-primary/85">
+                            {(selectedSceneScore?.breakdown ?? []).map((row) => (
+                              <div key={`${row.label}:${row.points}`} className="py-0.5">
+                                +{row.points} - {row.label}
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onMouseEnter={hoverUi}
+                            onClick={() => apply(jumpToScene(state, selectedScene.id))}
+                            className="mt-3 border border-accent-cyan px-3 py-2 text-xs font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-bg-base"
+                          >
+                            Navigate To Scene
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-text-primary/65">Select a scene to inspect details.</div>
+                      )}
+                    </aside>
                   </section>
                 )}
 

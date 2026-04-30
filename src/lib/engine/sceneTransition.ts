@@ -1,4 +1,5 @@
 import { GameState, Item, Scene } from '../../types';
+import { resolveFirstEnterSceneScore } from '../gameScoring';
 
 export interface SceneTransitionDeps {
   scenes: Record<string, Scene>;
@@ -155,7 +156,8 @@ export function transitionIntoScene(deps: SceneTransitionDeps, options: SceneTra
   const progressFlag = `__sceneProgressScore__:${sceneId}`;
   if (fromSceneId && fromSceneId !== sceneId && !next.flags[progressFlag]) {
     next.flags = { ...next.flags, [progressFlag]: true };
-    implicitScore += deps.scoreFirstEnterScene;
+    const firstEnterScore = resolveFirstEnterSceneScore(scene.firstEnterScore ?? deps.scoreFirstEnterScene);
+    implicitScore += firstEnterScore;
   }
   if (implicitScore > 0) {
     next.score = (next.score ?? 0) + implicitScore;

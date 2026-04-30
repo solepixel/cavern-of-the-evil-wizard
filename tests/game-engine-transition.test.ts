@@ -26,6 +26,41 @@ test('transitionCommand emits scene and history effects for intro command', () =
   assert.ok(effectTypes.includes('scene.changed'));
 });
 
+test('forced-start scenes do not award first-enter scene bonus', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'cutscene_intro',
+    history: [],
+    score: 0,
+  };
+
+  const toBedroom = transitionCommand(start, 'explore the room').state;
+  assert.equal(toBedroom.currentSceneId, 'bedroom');
+  assert.equal(toBedroom.score, 0);
+});
+
+test('scenes without override still award default first-enter bonus', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    score: 0,
+    objectStates: { door: 'unlocked' },
+  };
+
+  const hallway = transitionCommand(start, 'go hall').state;
+  assert.equal(hallway.currentSceneId, 'hallway');
+  assert.equal(hallway.score, 12);
+});
+
 test('opening wardrobe no longer auto-picks key; take key emits inventory effect', () => {
   const start = {
     ...INITIAL_STATE,

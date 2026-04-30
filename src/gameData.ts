@@ -797,6 +797,7 @@ export const SCENES: Record<string, Scene> = {
   'bedroom': {
     id: 'bedroom',
     viewportHandoffLayoutId: 'viewport-scene-panel',
+    firstEnterScore: 0,
     title: "{{name}}'s Bedroom",
     description:
       "You're in your childhood bedroom—ceiling too low, bunk too short, 80s posters watching you like old friends. The elastic of your dinosaur underwear strains to the max. A WARDROBE, shuttle-pattern RUG, WINDOW, and DOOR are the obvious landmarks.",
@@ -1004,6 +1005,7 @@ export const SCENES: Record<string, Scene> = {
     id: 'cutscene_bike_to_fairgrounds',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 3,
+    firstEnterScore: 0,
     title: 'Sea Point Park',
     description:
       'You pedal until your lungs burn. The carnival lights you remember are gone—only empty chain-link and wind-torn banners remain.',
@@ -1391,6 +1393,7 @@ export const SCENES: Record<string, Scene> = {
     id: 'cutscene_intro',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 1,
+    firstEnterScore: 0,
     title: 'A Strange Awakening',
     description: "You awake in a familiar room, however, something feels ... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
     image: '/assets/images/scenes/bedroom.png',

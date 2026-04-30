@@ -180,6 +180,8 @@ export interface Scene {
   examineRefreshText?: string;
   image?: string;
   background?: string;
+  /** One-time score awarded the first time entering from another scene (defaults to global score rule). */
+  firstEnterScore?: number;
   /** Optional transparent image layers drawn above the base scene image. */
   overlays?: SceneOverlay[];
   /**
