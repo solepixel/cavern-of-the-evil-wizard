@@ -172,6 +172,8 @@ export interface Scene {
   id: string;
   title: string;
   description: string;
+  /** Optional authored grouping label used by debug scene browser (e.g. "House Arc"). */
+  storyArc?: string;
   /** Scene-specific HELP copy used by both HELP command and Help modal. */
   helpText?: string;
   /** One-shot effects when this scene is entered for the first time (not from `explore the room` as a command). */

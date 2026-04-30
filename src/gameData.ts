@@ -800,6 +800,7 @@ function bedroomDoorUnlocked(s: GameState): boolean {
 export const SCENES: Record<string, Scene> = {
   'bedroom': {
     id: 'bedroom',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     firstEnterScore: 0,
     title: "{{name}}'s Bedroom",
@@ -864,6 +865,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'hallway': {
     id: 'hallway',
+    storyArc: 'House Arc',
     title: 'The Narrow Hallway',
     description:
       "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board.\n\nNORTH: the stairs down.\nSOUTH: your parents' bedroom door.\nEAST: the bathroom.\nWEST: your bedroom.",
@@ -946,6 +948,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'bathroom_hall': {
     id: 'bathroom_hall',
+    storyArc: 'House Arc',
     title: 'Outside the Bathroom',
     description:
       "You are facing the bathroom door. It's locked. From inside comes the unmistakable sound of your dad clearing his throat like he's hosting a morning radio show.",
@@ -961,6 +964,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'parents_bedroom': {
     id: 'parents_bedroom',
+    storyArc: 'House Arc',
     title: "Parents' Bedroom",
     description:
       "The room is dim. Your baby sister is in a PLAYPEN by the wall. A CLOSET looms like a wardrobe of adult consequences. A NIGHTSTAND holds a rattle. The door back to the HALLWAY is behind you.",
@@ -978,6 +982,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'cutscene_house_escape': {
     id: 'cutscene_house_escape',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 2,
     title: 'Into the Night',
@@ -1007,6 +1012,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'cutscene_bike_to_fairgrounds': {
     id: 'cutscene_bike_to_fairgrounds',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 3,
     firstEnterScore: 0,
@@ -1029,6 +1035,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'fairgrounds': {
     id: 'fairgrounds',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     title: 'The Last Arcade',
     description:
@@ -1041,6 +1048,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'cutscene_into_movie_game': {
     id: 'cutscene_into_movie_game',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 4,
     title: 'CAVERN OF THE EVIL WIZARD',
@@ -1058,6 +1066,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'ice_dwarf_village': {
     id: 'ice_dwarf_village',
+    storyArc: 'Ice Quest Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     title: 'Ice Dwarf Village',
     description:
@@ -1125,6 +1134,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'icy_pass': {
     id: 'icy_pass',
+    storyArc: 'Ice Quest Arc',
     title: 'Icy Pass',
     description:
       'Wind scrapes the pass like teeth. Somewhere ahead, a supply cache glimmers—armor meant for the cavern gate.',
@@ -1138,6 +1148,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'glacial_armory': {
     id: 'glacial_armory',
+    storyArc: 'Ice Quest Arc',
     title: 'Glacial Armory',
     description:
       'Crates of furs and ice-threaded mail line the walls. A placard reads: NOT FOR TOURISTS.',
@@ -1167,6 +1178,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'ice_cavern_gate': {
     id: 'ice_cavern_gate',
+    storyArc: 'Ice Quest Arc',
     title: 'Ice Cavern Gate',
     description:
       'A mouth of black ice waits. The cold hits like a wall. Without proper protection, you would freeze solid in seconds.',
@@ -1196,6 +1208,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'ice_wizard_arena': {
     id: 'ice_wizard_arena',
+    storyArc: 'Ice Quest Arc',
     title: 'Throne of Frost',
     description:
       'The Evil Wizard drifts above a spiral of shattered statues—Ice Dwarves who came before you. Your thermal pod is heavy at your belt.',
@@ -1211,6 +1224,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'relic_escape': {
     id: 'relic_escape',
+    storyArc: 'Ice Quest Arc',
     title: 'The Relic Road',
     description:
       'The relic thrums in your pack like a heartbeat everyone can hear. Footsteps crunch behind you—too many, too fast.',
@@ -1227,6 +1241,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'bandit_pass': {
     id: 'bandit_pass',
+    storyArc: 'Ice Quest Arc',
     title: 'Ambush at Blackfrost Bridge',
     description:
       'Masked figures block the bridge. One points at your pack. "Relic. Hand it over—or we take your fingers as interest."',
@@ -1250,6 +1265,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'ice_dwarf_village_final': {
     id: 'ice_dwarf_village_final',
+    storyArc: 'Ice Quest Arc',
     title: 'Homecoming',
     description:
       'The village cheers—quietly, like people who have learned not to tempt fate. The chief accepts the relic with both hands, eyes wet.',
@@ -1269,6 +1285,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'crossroads': {
     id: 'crossroads',
+    storyArc: 'Crossroads & Regions',
     title: 'Fourfold Crossroads',
     description:
       'Stone waymarkers split the world: NORTH to the Ice Dwarves, WEST toward river thunder, SOUTH toward volcanic glare, EAST to the mountain summit.',
@@ -1349,6 +1366,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'water_village': {
     id: 'water_village',
+    storyArc: 'Crossroads & Regions',
     title: 'Water Dwarf Village',
     description:
       'Terraced docks cling to a canyon lake. A waterfall thunders nearby, and the dwarves watch you like they expected this exact moment.',
@@ -1361,6 +1379,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'fire_village': {
     id: 'fire_village',
+    storyArc: 'Crossroads & Regions',
     title: 'Fire Dwarf Village',
     description:
       'Blackstone homes ring a lava caldera. Every breath tastes of ash and iron, and every face here has seen the volcano wake.',
@@ -1373,6 +1392,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'summit_gate': {
     id: 'summit_gate',
+    storyArc: 'Crossroads & Regions',
     title: 'Summit Gate',
     description:
       'Ancient runes encircle a stone dais. Three staff sockets wait around a central seal that feels older than language.',
@@ -1385,6 +1405,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'ending_fair_return': {
     id: 'ending_fair_return',
+    storyArc: 'Ending',
     title: 'The Wish, Again',
     description:
       "Light smears across your vision—arcade bulbs, cotton candy, your parents' worried-laugh faces. The fair is loud and alive. You're thirteen again, or close enough. The relic is gone. The dwarves are safe. And somewhere, Zoltar waits for the next fool with a quarter.",
@@ -1395,6 +1416,7 @@ export const SCENES: Record<string, Scene> = {
   },
   'cutscene_intro': {
     id: 'cutscene_intro',
+    storyArc: 'House Arc',
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 1,
     firstEnterScore: 0,

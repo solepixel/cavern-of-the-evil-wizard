@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { ITEMS, OBJECTS, SCENES } from '../gameData';
+import { INITIAL_STATE, ITEMS, OBJECTS, SCENES } from '../gameData';
 import { audioService, AVAILABLE_SFX_IDS } from '../lib/audioService';
 import { SaveSlotSummary } from '../lib/gameEngine';
 import { GameState, ItemId } from '../types';
@@ -22,7 +22,7 @@ import {
 } from '../lib/debugActions';
 import { decodeSceneAreaLabel, getSceneAreaDisplayLabel } from '../lib/sceneAreaLabel';
 
-type TabId = 'navigation' | 'scenes' | 'inventory' | 'player' | 'flags' | 'objects' | 'commands' | 'audio' | 'saves';
+type TabId = 'tools' | 'scenes' | 'inventory' | 'player' | 'flags' | 'objects' | 'commands' | 'audio' | 'saves';
 
 interface DebugPanelModalProps {
   isOpen: boolean;
@@ -40,7 +40,6 @@ interface DebugPanelModalProps {
 }
 
 const TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'navigation', label: 'Navigation' },
   { id: 'scenes', label: 'Scenes' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'player', label: 'Player' },
@@ -49,6 +48,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'commands', label: 'Commands' },
   { id: 'audio', label: 'Audio' },
   { id: 'saves', label: 'Saves' },
+  { id: 'tools', label: 'Tools' },
 ];
 
 function parseFlagValue(raw: string): boolean | number | string {
@@ -114,65 +114,64 @@ function collectObjectAxisOptions(objectId: string): Record<string, string[]> {
   return out;
 }
 
-const SCENE_GROUP_PRESET: SceneGroup[] = [
-  {
-    id: 'house',
-    label: 'House Arc',
-    sceneIds: [
-      'cutscene_intro',
-      'bedroom',
-      'hallway',
-      'bathroom_hall',
-      'parents_bedroom',
-      'cutscene_house_escape',
-      'cutscene_bike_to_fairgrounds',
-      'fairgrounds',
-      'cutscene_into_movie_game',
-    ],
-  },
-  {
-    id: 'ice',
-    label: 'Ice Quest Arc',
-    sceneIds: [
-      'ice_dwarf_village',
-      'icy_pass',
-      'glacial_armory',
-      'ice_cavern_gate',
-      'ice_wizard_arena',
-      'relic_escape',
-      'bandit_pass',
-      'ice_dwarf_village_final',
-    ],
-  },
-  {
-    id: 'world',
-    label: 'Crossroads & Regions',
-    sceneIds: ['crossroads', 'water_village', 'fire_village', 'summit_gate'],
-  },
-  {
-    id: 'ending',
-    label: 'Ending',
-    sceneIds: ['ending_fair_return'],
-  },
-];
+function getSceneOutgoingEdges(sceneId: string): string[] {
+  const scene = SCENES[sceneId];
+  if (!scene) return [];
+  const out = new Set<string>();
+  for (const next of Object.values(scene.exits ?? {})) {
+    if (SCENES[next]) out.add(next);
+  }
+  for (const response of Object.values(scene.commands ?? {})) {
+    if (response.nextScene && SCENES[response.nextScene]) out.add(response.nextScene);
+  }
+  for (const objId of scene.objects ?? []) {
+    const obj = OBJECTS[objId];
+    if (!obj) continue;
+    for (const it of obj.interactions ?? []) {
+      if (it.nextScene && SCENES[it.nextScene]) out.add(it.nextScene);
+    }
+  }
+  return Array.from(out);
+}
+
+function buildSceneOrderFromGraph(): string[] {
+  const all = Object.keys(SCENES);
+  if (!all.length) return [];
+  const start = SCENES[INITIAL_STATE.currentSceneId] ? INITIAL_STATE.currentSceneId : all[0];
+  const visited = new Set<string>();
+  const queue: string[] = [start];
+  const ordered: string[] = [];
+
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    ordered.push(id);
+    for (const next of getSceneOutgoingEdges(id)) {
+      if (!visited.has(next)) queue.push(next);
+    }
+  }
+
+  for (const id of all.sort()) {
+    if (!visited.has(id)) ordered.push(id);
+  }
+  return ordered;
+}
 
 function buildSceneGroups(): SceneGroup[] {
-  const allIds = new Set(Object.keys(SCENES));
-  const base = SCENE_GROUP_PRESET.map((g) => ({
-    ...g,
-    sceneIds: g.sceneIds.filter((id) => allIds.has(id)),
-  })).filter((g) => g.sceneIds.length > 0);
-  for (const g of base) {
-    for (const id of g.sceneIds) allIds.delete(id);
+  const ordered = buildSceneOrderFromGraph();
+  const grouped = new Map<string, SceneGroup>();
+  for (const id of ordered) {
+    const arcLabel = SCENES[id]?.storyArc?.trim() || 'Unassigned';
+    const key =
+      arcLabel
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'unassigned';
+    if (!grouped.has(key)) grouped.set(key, { id: key, label: arcLabel, sceneIds: [] });
+    grouped.get(key)!.sceneIds.push(id);
   }
-  if (allIds.size > 0) {
-    base.push({
-      id: 'other',
-      label: 'Other / Unsorted',
-      sceneIds: Array.from(allIds).sort(),
-    });
-  }
-  return base;
+  return Array.from(grouped.values());
 }
 
 function buildSceneScoreSummaries(groups: SceneGroup[]): Record<string, SceneScoreSummary> {
@@ -260,7 +259,7 @@ export default function DebugPanelModal({
   onToggleDamageFlashPinned,
 }: DebugPanelModalProps) {
   const hoverUi = () => audioService.playHoverThrottled();
-  const [activeTab, setActiveTab] = useState<TabId>('navigation');
+  const [activeTab, setActiveTab] = useState<TabId>('scenes');
   const [sceneQuery, setSceneQuery] = useState('');
   const [selectedSceneId, setSelectedSceneId] = useState(state.currentSceneId);
   const [navSceneId, setNavSceneId] = useState(state.currentSceneId);
@@ -382,7 +381,7 @@ export default function DebugPanelModal({
               </aside>
 
               <main className="min-h-0 flex-1 overflow-y-auto p-4">
-                {activeTab === 'navigation' && (
+                {activeTab === 'tools' && (
                   <section className="space-y-3">
                     <div className="rounded border border-border-base bg-bg-base p-3">
                       <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Quick Jump</div>
