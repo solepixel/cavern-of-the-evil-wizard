@@ -304,6 +304,33 @@ function applyScoreDelta(state: GameState, delta?: number): GameState {
   return { ...state, score: (state.score ?? 0) + delta };
 }
 
+/**
+ * Award `scoreDelta` once per stable action key (interaction/scene command), preventing
+ * score farming from repeated identical commands.
+ */
+function applyScoreDeltaOnce(state: GameState, delta: number | undefined, actionKey?: string): GameState {
+  if (delta === undefined || delta === 0) return state;
+  if (!actionKey) return applyScoreDelta(state, delta);
+  const scoreFlag = `__scoreAwarded__:${actionKey}`;
+  if (state.flags[scoreFlag]) return state;
+  return {
+    ...state,
+    score: (state.score ?? 0) + delta,
+    flags: { ...state.flags, [scoreFlag]: true },
+  };
+}
+
+function interactionScoreActionKey(objId: string | undefined, interaction: Interaction): string | undefined {
+  if (!objId) return undefined;
+  if (interaction.id) return `interaction:${objId}:${interaction.id}`;
+  if (interaction.regex) return `interaction:${objId}:${interaction.regex}`;
+  return undefined;
+}
+
+function sceneCommandScoreActionKey(sceneId: string, commandKey: string): string {
+  return `scene_command:${sceneId}:${commandKey}`;
+}
+
 function applySetPromptFromSpec(state: GameState, spec?: SetPromptSpec): GameState {
   if (!spec) return state;
   return {
@@ -1083,7 +1110,10 @@ export function processCommand(state: GameState, input: string): GameState {
 
     const response = responseKey ? currentScene.commands[responseKey] : undefined;
     if (response) {
-      return finish(applyResponse(newState, response));
+      const scoreActionKey = responseKey
+        ? sceneCommandScoreActionKey(currentScene.id, responseKey)
+        : undefined;
+      return finish(applyResponse(newState, response, scoreActionKey));
     }
   }
 
@@ -1200,6 +1230,7 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
   const beforeInventory = [...state.inventory];
   let implicitScore = 0;
   const replaceName = (text: string) => text.replace(/{{name}}/g, state.playerName);
+  const scoreActionKey = interactionScoreActionKey(objId, interaction);
 
   const obj = objId ? OBJECTS[objId] : undefined;
   const prevAxes = obj && objId ? getObjectAxes(state, objId, obj) : ({} as Record<string, string>);
@@ -1218,7 +1249,7 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
     if (!actuallyChanges) {
       const msg = interaction.redundantMessage ?? interaction.text ?? 'Nothing changes.';
       newState.history.push(replaceName(msg));
-      return applyScoreDelta(newState, interaction.scoreDelta);
+      return newState;
     }
     const merged = { ...prevAxes, ...patchResolved };
     newState.objectStates = { ...newState.objectStates, [objId]: merged };
@@ -1301,7 +1332,7 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
       deadlineReason: d.deadlineReason,
     };
   }
-  newState = applyScoreDelta(newState, interaction.scoreDelta);
+  newState = applyScoreDeltaOnce(newState, interaction.scoreDelta, scoreActionKey);
   if (implicitScore > 0) {
     newState = { ...newState, score: (newState.score ?? 0) + implicitScore };
   }
@@ -1310,7 +1341,7 @@ function applyInteraction(state: GameState, interaction: Interaction, objId?: st
   return queueNewInventoryAnimations(beforeInventory, newState);
 }
 
-function applyResponse(state: GameState, response: CommandResponse): GameState {
+function applyResponse(state: GameState, response: CommandResponse, scoreActionKey?: string): GameState {
   let newState = { ...state, equippedItemIds: [...(state.equippedItemIds ?? [])] };
   const beforeInventory = [...state.inventory];
   let implicitScore = 0;
@@ -1384,7 +1415,7 @@ function applyResponse(state: GameState, response: CommandResponse): GameState {
   if (response.clearDeadline) {
     newState = clearDeadlineFields(newState);
   }
-  newState = applyScoreDelta(newState, response.scoreDelta);
+  newState = applyScoreDeltaOnce(newState, response.scoreDelta, scoreActionKey);
   if (implicitScore > 0) {
     newState = { ...newState, score: (newState.score ?? 0) + implicitScore };
   }

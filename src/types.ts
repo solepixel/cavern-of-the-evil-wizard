@@ -38,6 +38,10 @@ export interface SceneOverlay {
   x?: number;
   /** Pixel offset from viewport top edge. Defaults to `0`. */
   y?: number;
+  /** Percentage offset from viewport width. Defaults to `0`. */
+  xPercent?: number;
+  /** Percentage offset from viewport height. Defaults to `0`. */
+  yPercent?: number;
   /** Optional visibility condition tied to an object state. */
   when?: SceneOverlayCondition;
 }

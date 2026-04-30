@@ -294,6 +294,7 @@ export default function App() {
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [isEquippedModalOpen, setIsEquippedModalOpen] = useState(false);
   const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
+  const [damageFlashPinned, setDamageFlashPinned] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
   const isNarrowMobile = useIsNarrowMobile();
   /** Fixed side drawers on small screens (game stays full-width until opened). */
@@ -548,6 +549,62 @@ export default function App() {
 
     const commandToProcess = manualCommand || inputValue;
     if (!commandToProcess.trim()) return;
+    const normalizedCommand = commandToProcess.trim();
+
+    if (isDevDebugUi) {
+      const c = normalizedCommand.toLowerCase().replace(/\s+/g, ' ');
+      if (c === 'debug: trigger damage pulse') {
+        setState((prev) => ({
+          ...prev,
+          history: [...prev.history, `> ${normalizedCommand}`, sysLine('DEBUG: damage pulse triggered.')],
+        }));
+        setDamageFlashPulse((n) => n + 1);
+        if (!manualCommand) {
+          const hist = commandHistoryRef.current;
+          if (normalizedCommand && hist[hist.length - 1] !== normalizedCommand) hist.push(normalizedCommand);
+        }
+        historyNavOffsetRef.current = -1;
+        historyNavDraftRef.current = null;
+        setSuggestionHighlight(-1);
+        setInputValue('');
+        setSkipTypewriter(false);
+        return;
+      }
+      if (c === 'debug: pin damage glow') {
+        setState((prev) => ({
+          ...prev,
+          history: [...prev.history, `> ${normalizedCommand}`, sysLine('DEBUG: damage glow pinned.')],
+        }));
+        setDamageFlashPinned(true);
+        if (!manualCommand) {
+          const hist = commandHistoryRef.current;
+          if (normalizedCommand && hist[hist.length - 1] !== normalizedCommand) hist.push(normalizedCommand);
+        }
+        historyNavOffsetRef.current = -1;
+        historyNavDraftRef.current = null;
+        setSuggestionHighlight(-1);
+        setInputValue('');
+        setSkipTypewriter(false);
+        return;
+      }
+      if (c === 'debug: unpin damage glow') {
+        setState((prev) => ({
+          ...prev,
+          history: [...prev.history, `> ${normalizedCommand}`, sysLine('DEBUG: damage glow unpinned.')],
+        }));
+        setDamageFlashPinned(false);
+        if (!manualCommand) {
+          const hist = commandHistoryRef.current;
+          if (normalizedCommand && hist[hist.length - 1] !== normalizedCommand) hist.push(normalizedCommand);
+        }
+        historyNavOffsetRef.current = -1;
+        historyNavDraftRef.current = null;
+        setSuggestionHighlight(-1);
+        setInputValue('');
+        setSkipTypewriter(false);
+        return;
+      }
+    }
 
     audioService.playSound('click');
     shouldAnimateDamageRef.current = true;
@@ -566,7 +623,7 @@ export default function App() {
       setState(newState);
     }
     if (!manualCommand) {
-      const trimmed = commandToProcess.trim();
+      const trimmed = normalizedCommand;
       const hist = commandHistoryRef.current;
       if (trimmed && hist[hist.length - 1] !== trimmed) {
         hist.push(trimmed);
@@ -580,6 +637,7 @@ export default function App() {
 
     setAmbientVolume(audioService.getAmbientVolume());
     setSfxVolume(audioService.getSfxVolume());
+    setIsMuted(audioService.getMuted());
     setIsAmbientMuted(audioService.getAmbientMuted());
     setIsSfxMuted(audioService.getSfxMuted());
 
@@ -793,6 +851,9 @@ export default function App() {
         setIsDebugPanelOpen(false);
         setInfoModalKind('log');
       }}
+      damageFlashPinned={damageFlashPinned}
+      onTriggerDamageFlash={() => setDamageFlashPulse((n) => n + 1)}
+      onToggleDamageFlashPinned={() => setDamageFlashPinned((v) => !v)}
     />
   );
 
@@ -1532,12 +1593,12 @@ export default function App() {
                         />
                         {activeSceneOverlays.map((overlay) => (
                           <img
-                            key={`${overlay.src}:${overlay.x ?? 0}:${overlay.y ?? 0}`}
+                            key={`${overlay.src}:${overlay.x ?? 0}:${overlay.y ?? 0}:${overlay.xPercent ?? 0}:${overlay.yPercent ?? 0}`}
                             src={overlay.src}
                             alt=""
                             className="pointer-events-none absolute inset-0 h-full w-full object-cover"
                             style={{
-                              transform: `translate(${overlay.x ?? 0}px, ${overlay.y ?? 0}px)`,
+                              transform: `translate(calc(${overlay.xPercent ?? 0}% + ${overlay.x ?? 0}px), calc(${overlay.yPercent ?? 0}% + ${overlay.y ?? 0}px))`,
                             }}
                             aria-hidden="true"
                             referrerPolicy="no-referrer"
@@ -1899,6 +1960,9 @@ export default function App() {
         />
 
         {mainFooter}
+        {damageFlashPinned && (
+          <div className="pointer-events-none fixed inset-0 z-119 shadow-[inset_0_0_0_3px_rgba(248,113,113,0.95),inset_0_0_20vw_rgba(239,68,68,0.75)]" />
+        )}
         <AnimatePresence>
           {damageFlashPulse > 0 && (
             <motion.div
@@ -1906,8 +1970,8 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: [0, 0.85, 0] }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.78, times: [0, 0.22, 1], ease: [0.4, 0, 0.2, 1] }}
-              className="pointer-events-none fixed inset-0 z-120 shadow-[inset_0_0_0_3px_rgba(248,113,113,0.95),inset_0_0_70px_rgba(239,68,68,0.5)]"
+              transition={{ duration: 1.45, times: [0, 0.38, 1], ease: [0.4, 0, 0.2, 1] }}
+              className="pointer-events-none fixed inset-0 z-120 shadow-[inset_0_0_0_3px_rgba(248,113,113,0.95),inset_0_0_20vw_rgba(239,68,68,0.75)]"
             />
           )}
         </AnimatePresence>

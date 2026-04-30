@@ -32,6 +32,9 @@ interface DebugPanelModalProps {
   onLoadSlot: (slotId: string) => void;
   onDeleteSlot: (slotId: string) => void;
   onOpenDataLog: () => void;
+  damageFlashPinned: boolean;
+  onTriggerDamageFlash: () => void;
+  onToggleDamageFlashPinned: () => void;
 }
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -64,6 +67,9 @@ export default function DebugPanelModal({
   onLoadSlot,
   onDeleteSlot,
   onOpenDataLog,
+  damageFlashPinned,
+  onTriggerDamageFlash,
+  onToggleDamageFlashPinned,
 }: DebugPanelModalProps) {
   const hoverUi = () => audioService.playHoverThrottled();
   const [activeTab, setActiveTab] = useState<TabId>('navigation');
@@ -322,6 +328,24 @@ export default function DebugPanelModal({
                       <ToggleButton label="Game Started" enabled={state.gameStarted} onClick={() => apply(setPlayerStateField(state, { gameStarted: !state.gameStarted }))} />
                       <ToggleButton label="Naming Phase" enabled={state.namingPhase} onClick={() => apply(setPlayerStateField(state, { namingPhase: !state.namingPhase }))} />
                       <ToggleButton label="Game Over" enabled={state.isGameOver} onClick={() => apply(setPlayerStateField(state, { isGameOver: !state.isGameOver }))} />
+                    </div>
+                    <div className="rounded border border-border-base bg-bg-base p-3">
+                      <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Damage FX Preview</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onMouseEnter={hoverUi}
+                          onClick={onTriggerDamageFlash}
+                          className="border border-red-500 px-3 py-2 text-xs font-black uppercase tracking-widest text-red-300 hover:bg-red-500/15"
+                        >
+                          Trigger Pulse
+                        </button>
+                        <ToggleButton
+                          label="Pin Red Glow"
+                          enabled={damageFlashPinned}
+                          onClick={onToggleDamageFlashPinned}
+                        />
+                      </div>
                     </div>
                   </section>
                 )}

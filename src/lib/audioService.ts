@@ -209,7 +209,7 @@ class AudioService {
     this.isMuted = !this.isMuted;
     if (this.ambient) {
       if (this.isMuted || this.isAmbientMuted) this.ambient.pause();
-      else this.ambient.play();
+      else this.ambient.play().catch(() => undefined);
     }
     this.refreshLoopingSfxPlayback();
     return this.isMuted;
@@ -219,7 +219,7 @@ class AudioService {
     this.isAmbientMuted = !this.isAmbientMuted;
     if (this.ambient) {
       if (this.isMuted || this.isAmbientMuted) this.ambient.pause();
-      else this.ambient.play();
+      else this.ambient.play().catch(() => undefined);
     }
     return this.isAmbientMuted;
   }

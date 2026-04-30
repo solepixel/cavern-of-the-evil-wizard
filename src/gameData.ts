@@ -461,6 +461,7 @@ export const OBJECTS: Record<string, GameObject> = {
         text: "You launch yourself at the [[bed]], twist your ankle on the way down, and crash hard on the floor. Everything rings. That hurt badly.",
         redundantMessage: "Your desire to have this type of fun at your size has cost you dearly. You bump your head on the low ceiling and land awkwardly on your neck.",
         damage: 50,
+        scoreDelta: 1,
         playSound: 'bone_break',
       },
       {
@@ -859,7 +860,7 @@ export const SCENES: Record<string, Scene> = {
     id: 'hallway',
     title: 'The Narrow Hallway',
     description:
-      "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board. NORTH: the stairs down. SOUTH: your parents' bedroom door. EAST: the bathroom. WEST: your bedroom.",
+      "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board.\n\nNORTH: the stairs down.\nSOUTH: your parents' bedroom door.\nEAST: the bathroom.\nWEST: your bedroom.",
     examineRefreshText:
       'The hall is quiet except for the ordinary sounds of a house waking up—somewhere downstairs, a cabinet closes. Upstairs, the bathroom fan hums like a warning.',
     image: '/assets/images/scenes/hallway.png',
@@ -871,7 +872,7 @@ export const SCENES: Record<string, Scene> = {
     interactionLabels: ['STAIRS', 'PARENTS_ROOM', 'BATHROOM', 'YOUR_ROOM'],
     isCheckpoint: true,
     onLoad: {
-      text: "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board. NORTH: the stairs down. SOUTH: your parents' bedroom door. EAST: the bathroom. WEST: your bedroom.",
+      text: "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board.\n\nNORTH: the stairs down.\nSOUTH: your parents' bedroom door.\nEAST: the bathroom.\nWEST: your bedroom.",
     },
     commands: {
       '(go|walk|head) (north|downstairs)': {
@@ -1390,8 +1391,8 @@ export const SCENES: Record<string, Scene> = {
     viewportHandoffLayoutId: 'viewport-scene-panel',
     cutscenePanelOrdinal: 1,
     title: 'A Strange Awakening',
-    description: "You awake in a familiar room, however, something feels .... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
-    image: '/assets/images/scenes/cutscene_intro.png',
+    description: "You awake in a familiar room, however, something feels ... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
+    image: '/assets/images/scenes/bedroom.png',
     objects: [],
     exits: {},
     commands: {
