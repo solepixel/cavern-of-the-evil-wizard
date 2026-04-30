@@ -23,6 +23,25 @@ export interface SceneOnLoad {
   setFlags?: Record<string, boolean | string | number>;
 }
 
+export interface SceneOverlayCondition {
+  /** Object id whose current state controls this overlay visibility. */
+  objectId: ObjectId;
+  /** Legacy single-axis check (uses object legacy axis key, default `s`). */
+  whenObjectState?: string;
+  /** Multi-axis match (all provided keys must match). */
+  whenAxes?: Record<string, string>;
+}
+
+export interface SceneOverlay {
+  src: string;
+  /** Pixel offset from viewport left edge. Defaults to `0`. */
+  x?: number;
+  /** Pixel offset from viewport top edge. Defaults to `0`. */
+  y?: number;
+  /** Optional visibility condition tied to an object state. */
+  when?: SceneOverlayCondition;
+}
+
 /**
  * Narrow follow-up prompt: next player line is matched against `aliases` keys (normalized);
  * on match, input is rewritten to the alias value (canonical command) before parsing.
@@ -155,6 +174,8 @@ export interface Scene {
   examineRefreshText?: string;
   image?: string;
   background?: string;
+  /** Optional transparent image layers drawn above the base scene image. */
+  overlays?: SceneOverlay[];
   /**
    * When set, the cutscene panel image participates in a Motion `layoutId` handoff
    * (e.g. gameplay viewport in App). Target gameplay scenes should use the same id

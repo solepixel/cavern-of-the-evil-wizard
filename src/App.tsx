@@ -29,7 +29,7 @@ import {
   Sword,
   Boxes,
 } from 'lucide-react';
-import { GameState, Scene } from './types';
+import { GameState, Scene, SceneOverlay } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
 import {
   processCommand,
@@ -67,6 +67,7 @@ import { DicebearProfile, buildDicebearAvatarUrl, loadDicebearProfile, saveDiceb
 import { getHelpText } from './lib/helpText';
 import { resolveIconComponent } from './lib/iconRegistry';
 import { canUseGodModeDebug } from './lib/devEnvironment';
+import { DEFAULT_LEGACY_STATE_KEY, getObjectAxes } from './lib/objectState';
 
 const initialAudioPrefs = loadAudioPreferences();
 
@@ -170,6 +171,24 @@ function hasAnyHandsItem(state: GameState): boolean {
     if ((it.gearSlot ?? it.equipmentSlot) === 'hands') return true;
   }
   return false;
+}
+
+function isOverlayActive(overlay: SceneOverlay, state: GameState): boolean {
+  if (!overlay.when) return true;
+  const { objectId, whenAxes, whenObjectState } = overlay.when;
+  const obj = OBJECTS[objectId];
+  if (!obj) return false;
+  const axes = getObjectAxes(state, objectId, obj);
+  if (whenAxes) {
+    for (const [k, v] of Object.entries(whenAxes)) {
+      if ((axes[k] ?? '') !== v) return false;
+    }
+  }
+  if (whenObjectState !== undefined) {
+    const key = obj.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY;
+    if ((axes[key] ?? '') !== whenObjectState) return false;
+  }
+  return true;
 }
 
 function getCommandSuggestions(params: {
@@ -1041,6 +1060,7 @@ export default function App() {
   const focusedGlowLabel = getFocusedGlowLabel(state);
   const suggestionActiveIndex =
     suggestionHighlight >= 0 && suggestionHighlight < commandSuggestions.length ? suggestionHighlight : -1;
+  const activeSceneOverlays = (currentScene.overlays ?? []).filter((overlay) => isOverlayActive(overlay, state));
 
   const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (state.isGameOver) return;
@@ -1510,6 +1530,19 @@ export default function App() {
                           className="h-full w-full object-cover opacity-80"
                           referrerPolicy="no-referrer"
                         />
+                        {activeSceneOverlays.map((overlay) => (
+                          <img
+                            key={`${overlay.src}:${overlay.x ?? 0}:${overlay.y ?? 0}`}
+                            src={overlay.src}
+                            alt=""
+                            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                            style={{
+                              transform: `translate(${overlay.x ?? 0}px, ${overlay.y ?? 0}px)`,
+                            }}
+                            aria-hidden="true"
+                            referrerPolicy="no-referrer"
+                          />
+                        ))}
                       </motion.div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center opacity-40">

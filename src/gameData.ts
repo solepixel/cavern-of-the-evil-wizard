@@ -236,7 +236,7 @@ export const OBJECTS: Record<string, GameObject> = {
         id: 'wardrobe_open_key',
         regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
         whenAxes: { door: 'closed', contents: 'key' },
-        text: "You open the wardrobe. Inside, you find a red hoodie that looks too small for you in your current condition. You also see an OLD BRASS KEY hanging on a hook.",
+        text: "You open the wardrobe. Inside, you see a yellow hoodie that looks too small for you in your current condition. You also see an OLD BRASS KEY hanging on a hook.",
         setAxes: { door: 'open' },
         playSound: 'wood_creak_open',
       },
@@ -265,7 +265,7 @@ export const OBJECTS: Record<string, GameObject> = {
         id: 'wardrobe_open_empty',
         regex: '(open( up)?|search|look in(side)?)( the)? wardrobe',
         whenAxes: { door: 'closed', contents: 'empty' },
-        text: "You open the wardrobe. Inside, you find that same old red hoodie that doesn't fit you. There's an empty hook with a vague dust outline where a key used to hang—but no key is there. You must've already obtained it.",
+        text: "You open the wardrobe. Inside, you see that same old yellow hoodie that doesn't fit you. There's an empty hook with a vague dust outline where a key used to hang—but no key is there. You must've already obtained it.",
         setAxes: { door: 'open' },
         playSound: 'wood_creak_open',
       },
@@ -803,7 +803,25 @@ export const SCENES: Record<string, Scene> = {
     onLoad: {
       text: "You wake up in a room that feels impossibly small. You sit up from the top bunk of a twin-sized bunk BED, but your legs are hanging off the end. Your head nearly brushes the ceiling.\n\nAs you look around, posters of 80s movies line the walls. You're wearing your favorite dinosaur underwear, but they're stretched to their limit across your adult waistline. There's a WARDROBE, a RUG, a WINDOW, and a DOOR.",
     },
-    image: "/assets/images/bedroom.png",
+    image: '/assets/images/scenes/bedroom.png',
+    overlays: [
+      {
+        src: '/assets/images/scenes/bedroom-wardrobe-open.png',
+        when: { objectId: 'wardrobe', whenAxes: { door: 'open' } },
+      },
+      {
+        src: '/assets/images/scenes/bedroom-bed-made.png',
+        when: { objectId: 'bed', whenObjectState: 'made' },
+      },
+      {
+        src: '/assets/images/scenes/bedroom-rug-flipped.png',
+        when: { objectId: 'rug', whenAxes: { lay: 'flipped' } },
+      },
+      {
+        src: '/assets/images/scenes/bedroom-door-open.png',
+        when: { objectId: 'door', whenObjectState: 'unlocked' },
+      },
+    ],
     isCheckpoint: true,
     objects: ['bed', 'wardrobe', 'rug', 'window', 'door'],
     interactionLabels: ['BED', 'WARDROBE', 'RUG', 'WINDOW', 'DOOR'],
@@ -844,6 +862,7 @@ export const SCENES: Record<string, Scene> = {
       "You're in the upstairs hall of your parents' house—low ceiling, family photos, that one creaky board. NORTH: the stairs down. SOUTH: your parents' bedroom door. EAST: the bathroom. WEST: your bedroom.",
     examineRefreshText:
       'The hall is quiet except for the ordinary sounds of a house waking up—somewhere downstairs, a cabinet closes. Upstairs, the bathroom fan hums like a warning.',
+    image: '/assets/images/scenes/hallway.png',
     objects: ['bathroom_door'],
     exits: {
       west: 'bedroom',
@@ -923,6 +942,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Outside the Bathroom',
     description:
       "You are facing the bathroom door. It's locked. From inside comes the unmistakable sound of your dad clearing his throat like he's hosting a morning radio show.",
+    image: '/assets/images/scenes/bathroom_hall.png',
     objects: ['bathroom_door'],
     exits: { back: 'hallway' },
     commands: {
@@ -939,6 +959,7 @@ export const SCENES: Record<string, Scene> = {
       "The room is dim. Your baby sister is in a PLAYPEN by the wall. A CLOSET looms like a wardrobe of adult consequences. A NIGHTSTAND holds a rattle. The door back to the HALLWAY is behind you.",
     examineRefreshText:
       'The playpen, the closet, the nightstand, the door—everything feels louder than it should. Your sister watches you with the moral certainty of a judge.',
+    image: '/assets/images/scenes/parents_bedroom.png',
     objects: ['parents_closet', 'rattle_table', 'playpen', 'parents_exit_door'],
     interactionLabels: ['CLOSET', 'PLAYPEN', 'NIGHTSTAND', 'DOOR'],
     exits: {
@@ -955,7 +976,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Into the Night',
     description:
       'The suburban night air hits you like a reboot. Streetlights. Crickets. Somewhere, a dog barks at the universe.',
-    background: '/assets/images/bedroom.png',
+    image: '/assets/images/scenes/cutscene_house_escape.png',
     objects: [],
     exits: {},
     commands: {
@@ -984,7 +1005,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Sea Point Park',
     description:
       'You pedal until your lungs burn. The carnival lights you remember are gone—only empty chain-link and wind-torn banners remain.',
-    background: '/assets/images/bedroom.png',
+    image: '/assets/images/scenes/cutscene_bike_to_fairgrounds.png',
     objects: [],
     exits: {},
     commands: {
@@ -1004,7 +1025,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'The Last Arcade',
     description:
       'The fairgrounds are empty. One arcade cabinet stands alone in the moonlight—ZOLTAR, grinning with painted eyes.',
-    image: 'https://picsum.photos/seed/zoltar-night/800/600',
+    image: '/assets/images/scenes/fairgrounds.png',
     isCheckpoint: true,
     objects: ['zoltar'],
     exits: {},
@@ -1017,7 +1038,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'CAVERN OF THE EVIL WIZARD',
     description:
       'The screen glare becomes snow. The synth music becomes wind. You are not at the fairgrounds anymore—you are inside the game, pixel borders gone, stakes horribly real.',
-    background: '/assets/images/bedroom.png',
+    image: '/assets/images/scenes/cutscene_into_movie_game.png',
     objects: [],
     exits: {},
     commands: {
@@ -1033,7 +1054,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Ice Dwarf Village',
     description:
       'Snow huts ring a blue fire. Ice Dwarves in patchwork mail size you up like a math problem. Their chief taps a training sword against her palm.',
-    image: 'https://picsum.photos/seed/ice-village/800/600',
+    image: '/assets/images/scenes/ice_dwarf_village.png',
     isCheckpoint: true,
     objects: [],
     exits: { north: 'icy_pass' },
@@ -1099,7 +1120,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Icy Pass',
     description:
       'Wind scrapes the pass like teeth. Somewhere ahead, a supply cache glimmers—armor meant for the cavern gate.',
-    image: 'https://picsum.photos/seed/icy-pass/800/600',
+    image: '/assets/images/scenes/icy_pass.png',
     objects: [],
     exits: { south: 'ice_dwarf_village', north: 'glacial_armory' },
     commands: {
@@ -1112,7 +1133,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Glacial Armory',
     description:
       'Crates of furs and ice-threaded mail line the walls. A placard reads: NOT FOR TOURISTS.',
-    image: 'https://picsum.photos/seed/glacial-armory/800/600',
+    image: '/assets/images/scenes/glacial_armory.png',
     objects: [],
     exits: { south: 'icy_pass', north: 'ice_cavern_gate' },
     commands: {
@@ -1141,7 +1162,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Ice Cavern Gate',
     description:
       'A mouth of black ice waits. The cold hits like a wall. Without proper protection, you would freeze solid in seconds.',
-    image: 'https://picsum.photos/seed/ice-gate/800/600',
+    image: '/assets/images/scenes/ice_cavern_gate.png',
     objects: [],
     exits: { south: 'glacial_armory' },
     commands: {
@@ -1170,7 +1191,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Throne of Frost',
     description:
       'The Evil Wizard drifts above a spiral of shattered statues—Ice Dwarves who came before you. Your thermal pod is heavy at your belt.',
-    image: 'https://picsum.photos/seed/wizard-arena/800/600',
+    image: '/assets/images/scenes/ice_wizard_arena.png',
     isCheckpoint: true,
     objects: ['evil_wizard'],
     exits: {},
@@ -1185,7 +1206,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'The Relic Road',
     description:
       'The relic thrums in your pack like a heartbeat everyone can hear. Footsteps crunch behind you—too many, too fast.',
-    image: 'https://picsum.photos/seed/relic-escape/800/600',
+    image: '/assets/images/scenes/relic_escape.png',
     objects: [],
     exits: {},
     commands: {
@@ -1201,7 +1222,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Ambush at Blackfrost Bridge',
     description:
       'Masked figures block the bridge. One points at your pack. "Relic. Hand it over—or we take your fingers as interest."',
-    image: 'https://picsum.photos/seed/ambush-bridge/800/600',
+    image: '/assets/images/scenes/bandit_pass.png',
     objects: [],
     exits: {},
     commands: {
@@ -1224,7 +1245,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Homecoming',
     description:
       'The village cheers—quietly, like people who have learned not to tempt fate. The chief accepts the relic with both hands, eyes wet.',
-    image: 'https://picsum.photos/seed/ice-village-return/800/600',
+    image: '/assets/images/scenes/ice_dwarf_village_final.png',
     isCheckpoint: true,
     objects: [],
     exits: {},
@@ -1243,7 +1264,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Fourfold Crossroads',
     description:
       'Stone waymarkers split the world: NORTH to the Ice Dwarves, WEST toward river thunder, SOUTH toward volcanic glare, EAST to the mountain summit.',
-    image: 'https://picsum.photos/seed/fourfold-crossroads/800/600',
+    image: '/assets/images/scenes/crossroads.png',
     isCheckpoint: true,
     objects: [],
     exits: { north: 'ice_dwarf_village' },
@@ -1323,7 +1344,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Water Dwarf Village',
     description:
       'Terraced docks cling to a canyon lake. A waterfall thunders nearby, and the dwarves watch you like they expected this exact moment.',
-    image: 'https://picsum.photos/seed/water-village/800/600',
+    image: '/assets/images/scenes/water_village.png',
     objects: [],
     exits: { east: 'crossroads' },
     commands: {
@@ -1335,7 +1356,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Fire Dwarf Village',
     description:
       'Blackstone homes ring a lava caldera. Every breath tastes of ash and iron, and every face here has seen the volcano wake.',
-    image: 'https://picsum.photos/seed/fire-village/800/600',
+    image: '/assets/images/scenes/fire_village.png',
     objects: [],
     exits: { north: 'crossroads' },
     commands: {
@@ -1347,7 +1368,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'Summit Gate',
     description:
       'Ancient runes encircle a stone dais. Three staff sockets wait around a central seal that feels older than language.',
-    image: 'https://picsum.photos/seed/summit-gate/800/600',
+    image: '/assets/images/scenes/summit_gate.png',
     objects: [],
     exits: { west: 'crossroads' },
     commands: {
@@ -1359,7 +1380,7 @@ export const SCENES: Record<string, Scene> = {
     title: 'The Wish, Again',
     description:
       "Light smears across your vision—arcade bulbs, cotton candy, your parents' worried-laugh faces. The fair is loud and alive. You're thirteen again, or close enough. The relic is gone. The dwarves are safe. And somewhere, Zoltar waits for the next fool with a quarter.",
-    background: '/assets/images/bedroom.png',
+    image: '/assets/images/scenes/ending_fair_return.png',
     objects: [],
     exits: {},
     commands: {},
@@ -1370,7 +1391,7 @@ export const SCENES: Record<string, Scene> = {
     cutscenePanelOrdinal: 1,
     title: 'A Strange Awakening',
     description: "You awake in a familiar room, however, something feels .... different. The ceiling seems closer, the bed feels smaller, and your perspective has shifted. You feel bigger, stronger, yet strangely out of place in your own childhood sanctuary.",
-    background: "/assets/images/bedroom.png",
+    image: '/assets/images/scenes/cutscene_intro.png',
     objects: [],
     exits: {},
     commands: {
