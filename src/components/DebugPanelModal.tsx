@@ -217,6 +217,7 @@ export default function DebugPanelModal({
   const [sceneQuery, setSceneQuery] = useState('');
   const [selectedSceneId, setSelectedSceneId] = useState(state.currentSceneId);
   const [navSceneId, setNavSceneId] = useState(state.currentSceneId);
+  const [sceneImageModalSrc, setSceneImageModalSrc] = useState<string | null>(null);
   const [areaCodeInput, setAreaCodeInput] = useState(getSceneAreaDisplayLabel(state, state.currentSceneId));
   const [itemQuery, setItemQuery] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<ItemId>('');
@@ -265,6 +266,7 @@ export default function DebugPanelModal({
   const decodedAreaCode = useMemo(() => decodeSceneAreaLabel(areaCodeInput), [areaCodeInput]);
   const selectedScene = SCENES[selectedSceneId];
   const selectedSceneScore = sceneScoreById[selectedSceneId];
+  const selectedSceneImageSrc = selectedScene?.image ?? selectedScene?.background ?? null;
 
   const apply = (next: GameState) => onApplyState(next);
 
@@ -469,6 +471,26 @@ export default function DebugPanelModal({
                               <span className="font-black text-accent-cyan">{selectedSceneScore?.cumulativeMaxPoints ?? 0}</span>
                             </div>
                           </div>
+                          <div className="mt-2 text-[10px] uppercase tracking-wide text-text-primary/65">Scene Image</div>
+                          {selectedSceneImageSrc ? (
+                            <button
+                              type="button"
+                              onMouseEnter={hoverUi}
+                              onClick={() => setSceneImageModalSrc(selectedSceneImageSrc)}
+                              className="overflow-hidden rounded border border-border-base bg-black text-left hover:border-accent-cyan/60"
+                            >
+                              <img
+                                src={selectedSceneImageSrc}
+                                alt={selectedScene.title}
+                                className="max-h-44 w-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </button>
+                          ) : (
+                            <div className="rounded border border-border-base bg-bg-panel p-2 text-xs text-text-primary/65">
+                              No scene image set.
+                            </div>
+                          )}
                           <div className="mt-2 text-[10px] uppercase tracking-wide text-text-primary/65">Description</div>
                           <div className="max-h-36 overflow-auto border border-border-base bg-bg-panel p-2 text-xs text-text-primary/80">
                             {selectedScene.description}
@@ -772,6 +794,43 @@ export default function DebugPanelModal({
                 )}
               </main>
             </div>
+
+            <AnimatePresence>
+              {sceneImageModalSrc && (
+                <div className="fixed inset-0 z-[230] flex items-center justify-center p-3 sm:p-6">
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setSceneImageModalSrc(null)}
+                    className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+                    aria-label="Close scene image preview"
+                  />
+                  <motion.div
+                    initial={{ scale: 0.96, opacity: 0, y: 8 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.98, opacity: 0, y: 6 }}
+                    className="relative z-10 max-h-[88dvh] w-full max-w-5xl overflow-hidden rounded border-2 border-accent-cyan bg-bg-base"
+                  >
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      onClick={() => setSceneImageModalSrc(null)}
+                      className="absolute right-2 top-2 z-10 rounded border border-accent-cyan/70 bg-bg-base/85 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-bg-base"
+                    >
+                      Close
+                    </button>
+                    <img
+                      src={sceneImageModalSrc}
+                      alt="Scene preview"
+                      className="h-auto max-h-[88dvh] w-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
       )}

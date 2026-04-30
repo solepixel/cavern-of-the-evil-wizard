@@ -15,7 +15,7 @@ import { buildDicebearAvatarUrl, loadDicebearProfile } from './dicebearAvatar';
 import { loadLocalAvatar } from './localAvatar';
 import { getHelpText } from './helpText';
 import { transitionIntoScene } from './engine/sceneTransition';
-import { ACTION_ACHIEVEMENT_AWARDS } from './achievements';
+import { ACHIEVEMENTS, ACTION_ACHIEVEMENT_AWARDS } from './achievements';
 import {
   DEFAULT_LEGACY_STATE_KEY,
   getObjectAxes,
@@ -319,6 +319,8 @@ function applyAchievementAwardForAction(state: GameState, actionKey?: string): G
   };
   if (prevLevel === 0) {
     next.pendingAchievementQueue = [...(next.pendingAchievementQueue ?? []), { id: award.achievementId }];
+    const badgeName = ACHIEVEMENTS[award.achievementId]?.name ?? award.achievementId;
+    next.history = [...next.history, sysLine(`ACHIEVEMENT UNLOCKED: ${badgeName}`)];
   }
   // Subtle reinforcement on every achievement-related action (including level-ups).
   audioService.playSound('terminal_blip');
