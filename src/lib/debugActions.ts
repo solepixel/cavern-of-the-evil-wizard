@@ -1,16 +1,58 @@
 import { ITEMS, SCENES } from '../gameData';
-import { GameState, ItemId } from '../types';
+import { GameState, ItemId, ObjectId } from '../types';
+import { getDebugSceneProgressionPatch } from './debugSceneSeeds';
 import { processCommand } from './gameEngine';
+
+function cloneObjectStatesForDebug(objectStates: GameState['objectStates']): GameState['objectStates'] {
+  const out: GameState['objectStates'] = {};
+  for (const [id, v] of Object.entries(objectStates ?? {})) {
+    out[id as ObjectId] = typeof v === 'string' ? v : { ...v };
+  }
+  return out;
+}
 
 export function jumpToScene(state: GameState, sceneId: string): GameState {
   if (!SCENES[sceneId]) return state;
-  return {
+
+  const patch = getDebugSceneProgressionPatch(sceneId);
+  const playerName = state.playerName;
+
+  const next: GameState = {
     ...state,
     currentSceneId: sceneId,
     isGameOver: false,
     gameStarted: true,
     namingPhase: false,
-    history: [...state.history, `[SYS] DEBUG: jumped to scene "${sceneId}".`],
+    hp: state.maxHp,
+    pendingItem: null,
+    pendingItemQueue: [],
+    pendingAchievementQueue: [],
+    pendingPrompt: undefined,
+    deadlineAtMs: undefined,
+    deadlineSceneId: undefined,
+    deadlineReason: undefined,
+    deadlineTurnsLeft: undefined,
+    playerName,
+  };
+
+  if (!patch) {
+    return {
+      ...next,
+      history: [...next.history, `[SYS] DEBUG: jumped to scene "${sceneId}".`],
+    };
+  }
+
+  return {
+    ...next,
+    inventory: [...patch.inventory],
+    equippedItemIds: patch.equippedItemIds.filter((id) => patch.inventory.includes(id)),
+    flags: { ...patch.flags },
+    objectStates: cloneObjectStatesForDebug(patch.objectStates),
+    hasMap: patch.hasMap,
+    score: patch.score,
+    achievementLevels: { ...patch.achievementLevels },
+    uiVisible: true,
+    history: [...next.history, `[SYS] DEBUG: jumped to scene "${sceneId}" (progression seed applied).`],
   };
 }
 

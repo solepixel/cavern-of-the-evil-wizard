@@ -21,6 +21,14 @@ test('jumpToScene moves to valid scene and keeps game active', () => {
   assert.ok(next.history[next.history.length - 1]?.includes('DEBUG: jumped to scene'));
 });
 
+test('jumpToScene seeds fairgrounds with quarter and visible UI', () => {
+  const start = { ...INITIAL_STATE, gameStarted: true, namingPhase: false, currentSceneId: 'bedroom', history: [], inventory: [] };
+  const next = jumpToScene(start, 'fairgrounds');
+  assert.equal(next.currentSceneId, 'fairgrounds');
+  assert.equal(next.uiVisible, true);
+  assert.ok(next.inventory.includes('quarter'));
+});
+
 test('inventory add + equip + unequip flow works', () => {
   const start = { ...INITIAL_STATE, inventory: [], equippedItemIds: [] };
   const withItem = addInventoryItems(start, ['giants_hoodie']);
