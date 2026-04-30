@@ -15,6 +15,7 @@ import { buildDicebearAvatarUrl, loadDicebearProfile } from './dicebearAvatar';
 import { loadLocalAvatar } from './localAvatar';
 import { getHelpText } from './helpText';
 import { transitionIntoScene } from './engine/sceneTransition';
+import { ACTION_ACHIEVEMENT_AWARDS } from './achievements';
 import {
   DEFAULT_LEGACY_STATE_KEY,
   getObjectAxes,
@@ -198,13 +199,11 @@ export function resolveObjectInteraction(
 ): Interaction {
   const targetId = raw.reuseInteractionId;
   if (!targetId) {
-    const { id: _i, reuseInteractionId: _r, ...rest } = raw;
-    return rest as Interaction;
+    return { ...raw, reuseInteractionId: undefined } as Interaction;
   }
 
   if (targetId === REUSE_INTERACTION_EXAMINE) {
-    const { id: _i, reuseInteractionId: _r, ...rest } = raw;
-    return { ...rest, regex: raw.regex, examineReuse: true } as Interaction;
+    return { ...raw, regex: raw.regex, reuseInteractionId: undefined, examineReuse: true } as Interaction;
   }
 
   if (visitingIds.has(targetId)) {
@@ -222,10 +221,9 @@ export function resolveObjectInteraction(
   const base = resolveObjectInteraction(baseRaw, obj, visitingIds);
   visitingIds.delete(targetId);
 
-  const { id: _id, reuseInteractionId: _reuse, ...overrides } = raw;
+  const { reuseInteractionId: _reuse, ...overrides } = raw;
   const merged: Interaction = { ...base, ...overrides, regex: raw.regex };
-  const { id: __, reuseInteractionId: ___, examineReuse: _er, ...runtime } = merged;
-  return runtime as Interaction;
+  return { ...merged, reuseInteractionId: undefined } as Interaction;
 }
 
 /** Match only `examine X` or `look at X` (not bare `look X`, which uses interaction text). */
@@ -304,6 +302,29 @@ function applyScoreDelta(state: GameState, delta?: number): GameState {
   return { ...state, score: (state.score ?? 0) + delta };
 }
 
+function applyAchievementAwardForAction(state: GameState, actionKey?: string): GameState {
+  if (!actionKey) return state;
+  const award = ACTION_ACHIEVEMENT_AWARDS[actionKey];
+  if (!award) return state;
+  const delta = Math.max(1, award.delta ?? 1);
+  const prevLevels = state.achievementLevels ?? {};
+  const prevLevel = Math.max(0, prevLevels[award.achievementId] ?? 0);
+  const nextLevel = prevLevel + delta;
+  const next: GameState = {
+    ...state,
+    achievementLevels: {
+      ...prevLevels,
+      [award.achievementId]: nextLevel,
+    },
+  };
+  if (prevLevel === 0) {
+    next.pendingAchievementQueue = [...(next.pendingAchievementQueue ?? []), { id: award.achievementId }];
+  }
+  // Subtle reinforcement on every achievement-related action (including level-ups).
+  audioService.playSound('terminal_blip');
+  return next;
+}
+
 /**
  * Award `scoreDelta` once per stable action key (interaction/scene command), preventing
  * score farming from repeated identical commands.
@@ -313,11 +334,12 @@ function applyScoreDeltaOnce(state: GameState, delta: number | undefined, action
   if (!actionKey) return applyScoreDelta(state, delta);
   const scoreFlag = `__scoreAwarded__:${actionKey}`;
   if (state.flags[scoreFlag]) return state;
-  return {
+  const next = {
     ...state,
     score: (state.score ?? 0) + delta,
     flags: { ...state.flags, [scoreFlag]: true },
   };
+  return applyAchievementAwardForAction(next, actionKey);
 }
 
 function interactionScoreActionKey(objId: string | undefined, interaction: Interaction): string | undefined {
@@ -376,6 +398,8 @@ function postCommandTurn(
 function migrateModernGameplayFields(state: GameState) {
   if (typeof state.score !== 'number' || Number.isNaN(state.score)) state.score = 0;
   if (!Array.isArray(state.pendingItemQueue)) state.pendingItemQueue = [];
+  if (!state.achievementLevels || typeof state.achievementLevels !== 'object') state.achievementLevels = {};
+  if (!Array.isArray(state.pendingAchievementQueue)) state.pendingAchievementQueue = [];
 }
 
 /**
@@ -963,7 +987,10 @@ export function processCommand(state: GameState, input: string): GameState {
         '^examine\\s+(myself|self|me)$',
         '^look\\s+at\\s+(myself|self|me)$',
       ],
-      run: (s) => ({ ...s, history: [...s.history, describeSelf(s)] }),
+      run: (s) => {
+        const withText = { ...s, history: [...s.history, describeSelf(s)] };
+        return applyScoreDeltaOnce(withText, 10, 'builtin:examine_self');
+      },
     },
   ];
 

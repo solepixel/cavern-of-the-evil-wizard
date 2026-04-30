@@ -241,6 +241,10 @@ export interface GameState {
   equippedItemIds: ItemId[];
   /** Cumulative adventure score (movie-game style). */
   score: number;
+  /** Achievement badge levels keyed by achievement id (`tidy`, `curiosity`, etc). */
+  achievementLevels?: Record<string, number>;
+  /** UI animation queue for newly unlocked achievements. */
+  pendingAchievementQueue?: Array<{ id: string }>;
   /** Follow-up question context (narrow alias resolution). */
   pendingPrompt?: PendingPrompt;
   /** Wall-clock deadline for the current timed decision (ms since epoch). */
@@ -272,6 +276,8 @@ export const INITIAL_STATE: GameState = {
   focusedObjectId: undefined,
   equippedItemIds: [],
   score: 0,
+  achievementLevels: {},
+  pendingAchievementQueue: [],
 };
 
 export interface CutsceneChoice {

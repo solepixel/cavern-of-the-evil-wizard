@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useCallback, startTransition } from
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import clsx from 'clsx';
 import {
-  Heart,
+  Monitor,
   Backpack,
   Map as MapIcon,
   Save,
@@ -28,6 +28,7 @@ import {
   Footprints,
   Sword,
   Boxes,
+  Sparkles,
 } from 'lucide-react';
 import { GameState, Scene, SceneOverlay } from './types';
 import { INITIAL_STATE, SCENES, ITEMS, OBJECTS } from './gameData';
@@ -55,6 +56,7 @@ import DevDebugModal from './components/DevDebugModal';
 import DebugPanelModal from './components/DebugPanelModal';
 import LoadGameModal from './components/LoadGameModal';
 import EquippedStatusModal from './components/EquippedStatusModal.tsx';
+import AchievementsModal from './components/AchievementsModal';
 import GameShell from './components/layout/GameShell';
 import ModalLayer from './components/layout/ModalLayer';
 import TerminalView from './components/terminal/TerminalView';
@@ -68,6 +70,7 @@ import { getHelpText } from './lib/helpText';
 import { resolveIconComponent } from './lib/iconRegistry';
 import { canUseGodModeDebug } from './lib/devEnvironment';
 import { DEFAULT_LEGACY_STATE_KEY, getObjectAxes } from './lib/objectState';
+import { ACHIEVEMENTS, getAchievementDisplayName } from './lib/achievements';
 
 const initialAudioPrefs = loadAudioPreferences();
 const DEFAULT_SCENE_OVERLAY_FADE_SEC = 0.38;
@@ -291,9 +294,13 @@ export default function App() {
   const [activePickupAnimations, setActivePickupAnimations] = useState<
     Array<{ key: string; id: string; target: 'inventory' | 'equipment'; startDelayMs: number }>
   >([]);
+  const [activeAchievementAnimations, setActiveAchievementAnimations] = useState<
+    Array<{ key: string; id: string; startDelayMs: number }>
+  >([]);
   const [pendingCutsceneState, setPendingCutsceneState] = useState<GameState | null>(null);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [isEquippedModalOpen, setIsEquippedModalOpen] = useState(false);
+  const [isAchievementsModalOpen, setIsAchievementsModalOpen] = useState(false);
   const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
   const [damageFlashPinned, setDamageFlashPinned] = useState(false);
   const [saveSlots, setSaveSlots] = useState(() => listSaveSlots());
@@ -358,6 +365,23 @@ export default function App() {
     setState((prev) => ({ ...prev, pendingItemQueue: [], pendingItem: null }));
     audioService.playSound('item');
   }, [state.pendingItemQueue]);
+
+  useEffect(() => {
+    const queued = state.pendingAchievementQueue ?? [];
+    if (!queued.length) return;
+    setActiveAchievementAnimations((prev) => {
+      const offset = prev.length > 0 ? 250 : 0;
+      return [
+        ...prev,
+        ...queued.map((entry, idx) => ({
+          key: `${entry.id}-${Date.now()}-${idx}-${Math.random().toString(16).slice(2, 8)}`,
+          id: entry.id,
+          startDelayMs: offset + idx * 250,
+        })),
+      ];
+    });
+    setState((prev) => ({ ...prev, pendingAchievementQueue: [] }));
+  }, [state.pendingAchievementQueue]);
 
   /** Mobile: show inventory drawer when a pickup animation runs so the new item is visible in context. */
   useEffect(() => {
@@ -486,6 +510,7 @@ export default function App() {
     if (!state.isGameOver) return;
     setIsEquippedModalOpen(false);
     setIsAvatarModalOpen(false);
+    setIsAchievementsModalOpen(false);
   }, [state.isGameOver]);
 
   const prevGameOverRef = useRef(state.isGameOver);
@@ -863,6 +888,7 @@ export default function App() {
   const showHeadSlot = hasAnyHeadItem(state);
   const showWeaponSlots = hasAnyWeaponItem(state);
   const showHandsSlot = hasAnyHandsItem(state);
+  const hasAnyAchievements = Object.values(state.achievementLevels ?? {}).some((level) => Number(level ?? 0) > 0);
   const slotHasAvailableGear = {
     head: state.inventory.some((id) => {
       const it = ITEMS[id];
@@ -904,6 +930,13 @@ export default function App() {
       inventory={state.inventory}
       equippedItemIds={state.equippedItemIds ?? []}
       onEquipItem={(itemId) => setState((prev) => equipItemFromInventory(prev, itemId))}
+    />
+  );
+  const achievementsModal = (
+    <AchievementsModal
+      isOpen={isAchievementsModalOpen}
+      onClose={() => setIsAchievementsModalOpen(false)}
+      achievementLevels={state.achievementLevels ?? {}}
     />
   );
 
@@ -1082,6 +1115,7 @@ export default function App() {
         {infoModal}
         {loadModal}
         {equippedModal}
+        {achievementsModal}
         {settingsModal}
         {debugPanelModal}
         <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
@@ -1105,6 +1139,7 @@ export default function App() {
         {infoModal}
         {loadModal}
         {equippedModal}
+        {achievementsModal}
         {settingsModal}
         {debugPanelModal}
         <div className="fixed inset-x-0 bottom-0 z-50">{mainFooter}</div>
@@ -1294,6 +1329,23 @@ export default function App() {
                 />
               </React.Fragment>
             ))}
+            {activeAchievementAnimations.map((anim) => {
+              const def = ACHIEVEMENTS[anim.id];
+              const level = Math.max(1, state.achievementLevels?.[anim.id] ?? 1);
+              return (
+                <React.Fragment key={anim.key}>
+                  <InventoryAnimation
+                    itemId={anim.id}
+                    itemName={getAchievementDisplayName(anim.id, level)}
+                    iconName={def?.icon ?? 'Sparkles'}
+                    target="achievement"
+                    bannerSuffix="UNLOCKED"
+                    startDelayMs={anim.startDelayMs}
+                    onComplete={() => setActiveAchievementAnimations((prev) => prev.filter((x) => x.key !== anim.key))}
+                  />
+                </React.Fragment>
+              );
+            })}
           </AnimatePresence>
 
         <div
@@ -1467,7 +1519,7 @@ export default function App() {
                         : 'bg-white text-text-inverse',
                     )}
                   >
-                    <Heart size={20} /> STATUS
+                    <Monitor size={20} /> TERMINAL
                   </button>
                   <button
                     type="button"
@@ -1510,6 +1562,26 @@ export default function App() {
                       )}
                     >
                       <Shirt size={20} /> EQUIPMENT
+                    </button>
+                  )}
+                  {hasAnyAchievements && (
+                    <button
+                      type="button"
+                      onMouseEnter={hoverUi}
+                      disabled={state.isGameOver}
+                      onClick={() => {
+                        if (state.isGameOver) return;
+                        setIsAchievementsModalOpen(true);
+                        setMobileLeftOpen(false);
+                      }}
+                      className={clsx(
+                        'flex w-full items-center gap-4 p-4 text-sm uppercase tracking-tighter transition-all',
+                        state.isGameOver
+                          ? 'cursor-not-allowed text-accent-cyan/35'
+                          : 'text-accent-cyan opacity-70 hover:bg-accent-magenta hover:text-bg-base',
+                      )}
+                    >
+                      <Sparkles size={20} /> ACHIEVEMENTS
                     </button>
                   )}
                   {state.hasMap && (
@@ -1945,6 +2017,7 @@ export default function App() {
 
         {settingsModal}
         {equippedModal}
+        {achievementsModal}
         <AvatarPickerModal
           isOpen={isAvatarModalOpen}
           onClose={() => {

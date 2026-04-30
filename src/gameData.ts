@@ -372,6 +372,7 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
+        id: 'window_look_out',
         regex: 'look ?(at|out|out of)?( the)? window',
         text: "You look out the window. The street below looks familiar, but the perspective is all wrong. You're much higher up than you remember being.",
         scoreDelta: 5,
@@ -445,6 +446,7 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
+        id: 'bed_make',
         regex: '(make|tidy up) bed',
         text: "You make the bed. It's now made. Well done!",
         setState: 'made',
@@ -466,6 +468,7 @@ export const OBJECTS: Record<string, GameObject> = {
         playSound: 'bone_break',
       },
       {
+        id: 'bed_look_under',
         regex: 'look under( the)? bed',
         text: "You reluctantly look under the bed. Thankfully there are no monsters under there.",
         scoreDelta: 5,
@@ -575,6 +578,7 @@ export const OBJECTS: Record<string, GameObject> = {
         }),
       },
       {
+        id: 'parents_closet_close',
         regex: 'close( the)? closet( door)?',
         whenAxes: { door: 'open' },
         text: 'You close the closet.',
@@ -1458,6 +1462,8 @@ export const INITIAL_STATE: GameState = {
   focusedObjectId: undefined,
   equippedItemIds: [],
   score: 0,
+  achievementLevels: {},
+  pendingAchievementQueue: [],
 };
 
 validateContentRegistryOrThrow({

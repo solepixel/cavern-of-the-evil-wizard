@@ -8,7 +8,8 @@ interface InventoryAnimationProps {
   itemId?: string;
   itemName: string;
   iconName?: string;
-  target?: 'inventory' | 'equipment';
+  target?: 'inventory' | 'equipment' | 'achievement';
+  bannerSuffix?: string;
   startDelayMs?: number;
   onComplete: () => void;
 }
@@ -18,6 +19,7 @@ export default function InventoryAnimation({
   itemName,
   iconName,
   target = 'inventory',
+  bannerSuffix = 'ACQUIRED',
   startDelayMs = 0,
   onComplete,
 }: InventoryAnimationProps) {
@@ -58,8 +60,19 @@ export default function InventoryAnimation({
 
   const motionStyles = useMemo(() => {
     const revealTransform = 'translate(-50%, -54%) scale(1)';
-    const xDelta = target === 'equipment' ? (narrow ? '-42vw' : '-38vw') : narrow ? '42vw' : '38vw';
-    const yDelta = narrow ? '-38vh' : '-42vh';
+    const xDelta =
+      target === 'equipment'
+        ? narrow
+          ? '-42vw'
+          : '-38vw'
+        : target === 'achievement'
+          ? narrow
+            ? '-42vw'
+            : '-38vw'
+          : narrow
+            ? '42vw'
+            : '38vw';
+    const yDelta = target === 'achievement' ? (narrow ? '28vh' : '32vh') : narrow ? '-38vh' : '-42vh';
     const flyTransform = `translate(calc(-50% + ${xDelta}), calc(-50% + ${yDelta})) scale(0)`;
     if (phase === 'pre') {
       return {
@@ -114,7 +127,7 @@ export default function InventoryAnimation({
               : 'max-w-[min(92vw,24rem)] px-5 py-2 text-xl tracking-[0.2em]',
           )}
         >
-          {itemName} ACQUIRED
+          {itemName} {bannerSuffix}
         </div>
       </div>
     </div>

@@ -61,6 +61,48 @@ test('scenes without override still award default first-enter bonus', () => {
   assert.equal(hallway.score, 12);
 });
 
+test('examine self awards 10 points only once', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    score: 0,
+  };
+
+  const first = transitionCommand(start, 'examine self').state;
+  assert.equal(first.score, 10);
+
+  const second = transitionCommand(first, 'examine self').state;
+  assert.equal(second.score, 10);
+});
+
+test('tidy achievement levels up across unique tidy actions', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    score: 0,
+  };
+
+  const madeBed = transitionCommand(start, 'make bed').state;
+  assert.equal(madeBed.achievementLevels?.tidy, 1);
+
+  const repeatedBed = transitionCommand(madeBed, 'make bed').state;
+  assert.equal(repeatedBed.achievementLevels?.tidy, 1);
+
+  const lookedUnderRug = transitionCommand(repeatedBed, 'look under rug').state;
+  const fixedRug = transitionCommand(lookedUnderRug, 'fix rug').state;
+  assert.equal(fixedRug.achievementLevels?.tidy, 2);
+});
+
 test('opening wardrobe no longer auto-picks key; take key emits inventory effect', () => {
   const start = {
     ...INITIAL_STATE,
