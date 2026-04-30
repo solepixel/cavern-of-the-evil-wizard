@@ -700,13 +700,41 @@ export const OBJECTS: Record<string, GameObject> = {
     },
     interactions: [
       {
-        regex: '(knock|listen)( on|at)?( the)? bathroom',
+        regex: 'knock( on|at)?( the)?( bathroom( door)?| door)',
+        callback: (s) => {
+          const knockCount = Number(s.flags?.bathroom_knock_count ?? 0) + 1;
+          // If this is the second time knocking, player dies
+          if (knockCount > 1) {
+            return {
+              ...s,
+              hp: 0,
+              isGameOver: true,
+              flags: { ...(s.flags || {}), bathroom_knock_count: knockCount },
+              history: [
+                ...s.history,
+                "You hammer on the bathroom door again. It flies open. Your dad—mid-shave, wild-eyed, brandishing a can of shaving cream and unholy parental rage—bursts out and tackles you to the carpet. It's not a fair fight. The last thing you see is the overhead light flickering... and then nothing.",
+                FATAL_PREFIX + 'YOU HAVE DIED.',
+              ],
+            };
+          }
+          return {
+            ...s,
+            flags: { ...(s.flags || {}), bathroom_knock_count: knockCount },
+            history: [
+              ...s.history,
+              "You knock on the bathroom door. Your dad grumbles something unintelligible. Best not to push it.",
+            ],
+          };
+        }
+      },
+      {
+        regex: 'listen( on|at|to)?( the)?( bathroom( door)?| door)?',
         text: "You knock once. Your dad grumbles something unintelligible. Best not to push it.",
       },
       {
-        regex: '(open|enter)( the)? bathroom',
+        regex: '(open|enter)( the)? bathroom( door)?',
         text: "Locked. And honestly? You're not emotionally prepared for whatever is happening in there.",
-      },
+      }
     ],
   },
   'evil_wizard': {

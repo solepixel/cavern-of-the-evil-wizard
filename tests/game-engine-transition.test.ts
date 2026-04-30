@@ -387,3 +387,76 @@ test('crossroads west path requires ice staff or dies', () => {
   assert.equal(survived.isGameOver, false);
   assert.equal(survived.currentSceneId, 'water_village');
 });
+
+test('knocking on bathroom door twice causes death', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bathroom_hall',
+    history: [],
+    hp: 100,
+    isGameOver: false,
+    flags: {},
+  };
+
+  const first = transitionCommand(start, 'knock on bathroom door').state;
+  assert.equal(first.isGameOver, false);
+  assert.equal(first.hp, 100);
+  assert.equal(first.flags.bathroom_knock_count, 1);
+  assert.ok((first.history[first.history.length - 1] ?? '').includes('Best not to push it.'));
+
+  const second = transitionCommand(first, 'knock on bathroom door').state;
+  assert.equal(second.isGameOver, true);
+  assert.equal(second.hp, 0);
+  assert.equal(second.flags.bathroom_knock_count, 2);
+  assert.ok((second.history[second.history.length - 1] ?? '').includes('YOU HAVE DIED.'));
+});
+
+test('knock bathroom twice causes death', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bathroom_hall',
+    history: [],
+    hp: 100,
+    isGameOver: false,
+    flags: {},
+  };
+
+  const first = transitionCommand(start, 'knock bathroom').state;
+  assert.equal(first.isGameOver, false);
+  assert.equal(first.flags.bathroom_knock_count, 1);
+
+  const second = transitionCommand(first, 'knock bathroom').state;
+  assert.equal(second.isGameOver, true);
+  assert.equal(second.hp, 0);
+});
+
+test('knock door twice causes death in bathroom hall', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bathroom_hall',
+    history: [],
+    hp: 100,
+    isGameOver: false,
+    flags: {},
+  };
+
+  const first = transitionCommand(start, 'knock door').state;
+  assert.equal(first.isGameOver, false);
+  assert.equal(first.flags.bathroom_knock_count, 1);
+
+  const second = transitionCommand(first, 'knock door').state;
+  assert.equal(second.isGameOver, true);
+  assert.equal(second.hp, 0);
+});
