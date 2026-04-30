@@ -6,6 +6,7 @@ import { audioService, AVAILABLE_SFX_IDS } from '../lib/audioService';
 import { SaveSlotSummary } from '../lib/gameEngine';
 import { GameState, ItemId } from '../types';
 import { SCORE_PICKUP_ITEM, resolveFirstEnterSceneScore } from '../lib/gameScoring';
+import { DEFAULT_LEGACY_STATE_KEY, getObjectAxes } from '../lib/objectState';
 import {
   addInventoryItems,
   deleteFlag,
@@ -66,6 +67,52 @@ type SceneScoreSummary = {
   cumulativeMaxPoints: number;
   breakdown: Array<{ label: string; points: number }>;
 };
+
+function overlayMatchesObjectState(
+  overlay: NonNullable<(typeof SCENES)[string]['overlays']>[number],
+  state: GameState,
+): boolean {
+  const when = overlay.when;
+  if (!when) return false;
+  const obj = OBJECTS[when.objectId];
+  if (!obj) return false;
+  const axes = getObjectAxes(state, when.objectId, obj);
+  if (when.whenAxes) {
+    for (const [k, v] of Object.entries(when.whenAxes)) {
+      if ((axes[k] ?? '') !== v) return false;
+    }
+  }
+  if (when.whenObjectState !== undefined) {
+    const key = obj.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY;
+    if ((axes[key] ?? '') !== when.whenObjectState) return false;
+  }
+  return true;
+}
+
+function collectObjectAxisOptions(objectId: string): Record<string, string[]> {
+  const obj = OBJECTS[objectId];
+  if (!obj) return {};
+  const map = new Map<string, Set<string>>();
+  const add = (axis: string, value: string | undefined) => {
+    if (!axis || value === undefined || value === '') return;
+    if (!map.has(axis)) map.set(axis, new Set<string>());
+    map.get(axis)!.add(value);
+  };
+  if (obj.initialAxes) {
+    for (const [k, v] of Object.entries(obj.initialAxes)) add(k, v);
+  } else {
+    add(obj.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY, obj.initialState);
+  }
+  for (const it of obj.interactions ?? []) {
+    for (const [k, v] of Object.entries(it.whenAxes ?? {})) add(k, v);
+    for (const [k, v] of Object.entries(it.setAxes ?? {})) add(k, v);
+    if (it.whenObjectState !== undefined) add(obj.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY, it.whenObjectState);
+    if (it.setState !== undefined) add(obj.legacyStateKey ?? DEFAULT_LEGACY_STATE_KEY, it.setState);
+  }
+  const out: Record<string, string[]> = {};
+  for (const [k, vals] of map.entries()) out[k] = Array.from(vals).sort();
+  return out;
+}
 
 const SCENE_GROUP_PRESET: SceneGroup[] = [
   {
@@ -227,6 +274,7 @@ export default function DebugPanelModal({
   const [objectStateRaw, setObjectStateRaw] = useState('');
   const [objectAxisKey, setObjectAxisKey] = useState('');
   const [objectAxisValue, setObjectAxisValue] = useState('');
+  const [showSceneBackdropInObjectPreview, setShowSceneBackdropInObjectPreview] = useState(true);
   const [debugCommand, setDebugCommand] = useState('');
   const [sfxId, setSfxId] = useState(AVAILABLE_SFX_IDS[0] ?? 'click');
   const [playerName, setPlayerName] = useState(state.playerName);
@@ -263,10 +311,25 @@ export default function DebugPanelModal({
   );
   const objectIds = useMemo(() => Object.keys(OBJECTS).sort(), []);
   const currentObjectState = objectId ? state.objectStates[objectId] : undefined;
+  const selectedObject = objectId ? OBJECTS[objectId] : undefined;
+  const selectedObjectAxes = useMemo(() => {
+    if (!objectId || !selectedObject) return null;
+    return getObjectAxes(state, objectId, selectedObject);
+  }, [objectId, selectedObject, state]);
+  const objectAxisOptions = useMemo(() => (objectId ? collectObjectAxisOptions(objectId) : {}), [objectId]);
   const decodedAreaCode = useMemo(() => decodeSceneAreaLabel(areaCodeInput), [areaCodeInput]);
   const selectedScene = SCENES[selectedSceneId];
   const selectedSceneScore = sceneScoreById[selectedSceneId];
   const selectedSceneImageSrc = selectedScene?.image ?? selectedScene?.background ?? null;
+  const currentScene = SCENES[state.currentSceneId];
+  const objectMatchedOverlays = useMemo(() => {
+    if (!objectId || !currentScene?.overlays?.length) return [];
+    return currentScene.overlays.filter((overlay) => {
+      if (overlay.when?.objectId !== objectId) return false;
+      return overlayMatchesObjectState(overlay, state);
+    });
+  }, [objectId, currentScene, state]);
+  const currentSceneImageSrc = currentScene?.image ?? currentScene?.background ?? null;
 
   const apply = (next: GameState) => onApplyState(next);
 
@@ -679,8 +742,42 @@ export default function DebugPanelModal({
                     <div className="rounded border border-border-base bg-bg-base p-3 text-xs text-text-primary/80">
                       Current state: {objectId ? JSON.stringify(currentObjectState ?? '(unset)') : '(select object)'}
                     </div>
+                    {objectId && selectedObjectAxes && (
+                      <div className="rounded border border-border-base bg-bg-base p-3">
+                        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">Quick Axis Controls</div>
+                        <div className="space-y-2">
+                          {Object.entries(selectedObjectAxes).map(([axisKey, axisValue]) => {
+                            const options = objectAxisOptions[axisKey] ?? [];
+                            return (
+                              <div key={axisKey} className="rounded border border-border-base bg-bg-panel p-2">
+                                <div className="mb-1 text-[10px] uppercase tracking-widest text-text-primary/70">
+                                  {axisKey}: <span className="font-black text-accent-cyan">{axisValue}</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {options.map((value) => (
+                                    <button
+                                      key={`${axisKey}:${value}`}
+                                      type="button"
+                                      onMouseEnter={hoverUi}
+                                      onClick={() => apply(setObjectAxis(state, objectId, axisKey, value))}
+                                      className={`border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                        value === axisValue
+                                          ? 'border-accent-cyan bg-accent-cyan text-bg-base'
+                                          : 'border-border-base text-accent-cyan hover:border-accent-cyan/65 hover:bg-bg-base'
+                                      }`}
+                                    >
+                                      {value}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
-                      <input type="text" placeholder='set full state (e.g. "open")' value={objectStateRaw} onChange={(e) => setObjectStateRaw(e.target.value)} className="min-w-64 border border-border-base bg-bg-base px-2 py-1.5 text-sm" />
+                      <input type="text" placeholder='advanced full state (e.g. {"door":"open","contents":"empty"})' value={objectStateRaw} onChange={(e) => setObjectStateRaw(e.target.value)} className="min-w-64 border border-border-base bg-bg-base px-2 py-1.5 text-sm" />
                       <button
                         type="button"
                         onMouseEnter={hoverUi}
@@ -701,13 +798,58 @@ export default function DebugPanelModal({
                         }}
                         className="border border-accent-cyan px-3 py-2 text-xs font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-bg-base"
                       >
-                        Apply Full State
+                        Apply Advanced State
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <input type="text" placeholder="axis key" value={objectAxisKey} onChange={(e) => setObjectAxisKey(e.target.value)} className="min-w-44 border border-border-base bg-bg-base px-2 py-1.5 text-sm" />
                       <input type="text" placeholder="axis value" value={objectAxisValue} onChange={(e) => setObjectAxisValue(e.target.value)} className="min-w-44 border border-border-base bg-bg-base px-2 py-1.5 text-sm" />
                       <button type="button" onMouseEnter={hoverUi} onClick={() => objectId && apply(setObjectAxis(state, objectId, objectAxisKey, objectAxisValue))} className="border border-accent-magenta px-3 py-2 text-xs font-black uppercase tracking-widest text-accent-magenta hover:bg-accent-magenta/15">Set Axis</button>
+                    </div>
+                    <div className="rounded border border-border-base bg-bg-base p-3">
+                      <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent-magenta">State Image Preview</div>
+                      <label className="mb-2 flex items-center gap-2 text-xs text-text-primary/80">
+                        <input
+                          type="checkbox"
+                          checked={showSceneBackdropInObjectPreview}
+                          onChange={(e) => setShowSceneBackdropInObjectPreview(e.target.checked)}
+                        />
+                        Show current scene image as background
+                      </label>
+                      <div className="relative aspect-video w-full overflow-hidden rounded border border-border-base bg-black">
+                        {showSceneBackdropInObjectPreview && currentSceneImageSrc && (
+                          <img
+                            src={currentSceneImageSrc}
+                            alt={currentScene?.title ?? 'Scene background'}
+                            className="absolute inset-0 h-full w-full object-cover opacity-70"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        {objectMatchedOverlays.map((overlay, idx) => (
+                          <img
+                            key={`${overlay.src}:${idx}:${overlay.x ?? 0}:${overlay.y ?? 0}:${overlay.xPercent ?? 0}:${overlay.yPercent ?? 0}`}
+                            src={overlay.src}
+                            alt={objectId ? `${objectId} state` : 'Object state'}
+                            className="absolute inset-0 h-full w-full object-cover"
+                            style={{
+                              transform: `translate(calc(${overlay.xPercent ?? 0}% + ${overlay.x ?? 0}px), calc(${overlay.yPercent ?? 0}% + ${overlay.y ?? 0}px))`,
+                            }}
+                            referrerPolicy="no-referrer"
+                          />
+                        ))}
+                        {!objectMatchedOverlays.length && (
+                          <div className="absolute inset-0 grid place-items-center text-center text-xs text-text-primary/70">
+                            {objectId
+                              ? 'No matching state image for this object in the current scene.'
+                              : 'Select an object to preview its state image.'}
+                          </div>
+                        )}
+                      </div>
+                      {objectMatchedOverlays.length > 0 && (
+                        <div className="mt-2 text-[10px] text-accent-cyan/75">
+                          Matching overlays: {objectMatchedOverlays.length}
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}
@@ -797,7 +939,7 @@ export default function DebugPanelModal({
 
             <AnimatePresence>
               {sceneImageModalSrc && (
-                <div className="fixed inset-0 z-[230] flex items-center justify-center p-3 sm:p-6">
+                <div className="fixed inset-0 z-230 flex items-center justify-center p-3 sm:p-6">
                   <motion.button
                     type="button"
                     initial={{ opacity: 0 }}
