@@ -334,7 +334,8 @@ export const OBJECTS: Record<string, GameObject> = {
         id: 'rug_under_empty',
         regex: '(look|search|flip|lift)( under)?( the)? rug',
         whenAxes: { contents: 'empty' },
-        setAxes: { contents: 'empty' },
+        text: "You lift the rug again. There's still nothing under it but dust.",
+        setAxes: { lay: 'flipped', contents: 'empty' },
         redundantMessage: "You've already checked under the rug. There's nothing new.",
       },
       {

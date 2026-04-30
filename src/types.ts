@@ -42,6 +42,8 @@ export interface SceneOverlay {
   xPercent?: number;
   /** Percentage offset from viewport height. Defaults to `0`. */
   yPercent?: number;
+  /** Fade transition duration in seconds (uses default when omitted). */
+  fadeDurationSec?: number;
   /** Optional visibility condition tied to an object state. */
   when?: SceneOverlayCondition;
 }

@@ -114,6 +114,48 @@ test('jumping on bed inflicts 50 damage and requires two failures for death', ()
   assert.equal(second.isGameOver, true);
 });
 
+test('look under bed awards score only once', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    score: 0,
+  };
+
+  const first = transitionCommand(start, 'look under bed').state;
+  assert.equal(first.score, 5);
+
+  const second = transitionCommand(first, 'look under bed').state;
+  assert.equal(second.score, 5);
+});
+
+test('looking under rug after fixing flips rug back again', () => {
+  const start = {
+    ...INITIAL_STATE,
+    gameStarted: true,
+    namingPhase: false,
+    uiVisible: true,
+    playerName: 'Josh',
+    currentSceneId: 'bedroom',
+    history: [],
+    inventory: [],
+    objectStates: {},
+  };
+
+  const firstLook = transitionCommand(start, 'look under rug').state;
+  assert.deepEqual(firstLook.objectStates.rug, { lay: 'flipped', contents: 'empty' });
+
+  const fixed = transitionCommand(firstLook, 'fix rug').state;
+  assert.deepEqual(fixed.objectStates.rug, { lay: 'flat', contents: 'empty' });
+
+  const secondLook = transitionCommand(fixed, 'look under rug').state;
+  assert.deepEqual(secondLook.objectStates.rug, { lay: 'flipped', contents: 'empty' });
+});
+
 test('full bedroom-to-return-house branch remains stable and ends in death state', () => {
   const start = {
     ...INITIAL_STATE,

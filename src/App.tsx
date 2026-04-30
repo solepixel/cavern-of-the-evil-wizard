@@ -70,6 +70,7 @@ import { canUseGodModeDebug } from './lib/devEnvironment';
 import { DEFAULT_LEGACY_STATE_KEY, getObjectAxes } from './lib/objectState';
 
 const initialAudioPrefs = loadAudioPreferences();
+const DEFAULT_SCENE_OVERLAY_FADE_SEC = 0.38;
 
 /** Matches Tailwind `lg:` breakpoint — use drawers until ~1024px. */
 const NARROW_MOBILE_MEDIA = '(max-width: 1023px)';
@@ -1591,19 +1592,28 @@ export default function App() {
                           className="h-full w-full object-cover opacity-80"
                           referrerPolicy="no-referrer"
                         />
-                        {activeSceneOverlays.map((overlay) => (
-                          <img
-                            key={`${overlay.src}:${overlay.x ?? 0}:${overlay.y ?? 0}:${overlay.xPercent ?? 0}:${overlay.yPercent ?? 0}`}
-                            src={overlay.src}
-                            alt=""
-                            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-                            style={{
-                              transform: `translate(calc(${overlay.xPercent ?? 0}% + ${overlay.x ?? 0}px), calc(${overlay.yPercent ?? 0}% + ${overlay.y ?? 0}px))`,
-                            }}
-                            aria-hidden="true"
-                            referrerPolicy="no-referrer"
-                          />
-                        ))}
+                        <AnimatePresence initial={false}>
+                          {activeSceneOverlays.map((overlay) => (
+                            <motion.img
+                              key={`${overlay.src}:${overlay.x ?? 0}:${overlay.y ?? 0}:${overlay.xPercent ?? 0}:${overlay.yPercent ?? 0}`}
+                              src={overlay.src}
+                              alt=""
+                              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                              style={{
+                                transform: `translate(calc(${overlay.xPercent ?? 0}% + ${overlay.x ?? 0}px), calc(${overlay.yPercent ?? 0}% + ${overlay.y ?? 0}px))`,
+                              }}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{
+                                duration: overlay.fadeDurationSec ?? DEFAULT_SCENE_OVERLAY_FADE_SEC,
+                                ease: [0.4, 0, 0.2, 1],
+                              }}
+                              aria-hidden="true"
+                              referrerPolicy="no-referrer"
+                            />
+                          ))}
+                        </AnimatePresence>
                       </motion.div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center opacity-40">
