@@ -842,19 +842,19 @@ export const SCENES: Record<string, Scene> = {
     image: '/assets/images/scenes/bedroom.png',
     overlays: [
       {
-        src: '/assets/images/scenes/bedroom-wardrobe-open.png',
+        src: '/assets/images/scenes/overlays/bedroom-wardrobe-open.png',
         when: { objectId: 'wardrobe', whenAxes: { door: 'open' } },
       },
       {
-        src: '/assets/images/scenes/bedroom-bed-made.png',
+        src: '/assets/images/scenes/overlays/bedroom-bed-made.png',
         when: { objectId: 'bed', whenObjectState: 'made' },
       },
       {
-        src: '/assets/images/scenes/bedroom-rug-flipped.png',
+        src: '/assets/images/scenes/overlays/bedroom-rug-flipped.png',
         when: { objectId: 'rug', whenAxes: { lay: 'flipped' } },
       },
       {
-        src: '/assets/images/scenes/bedroom-door-open.png',
+        src: '/assets/images/scenes/overlays/bedroom-door-open.png',
         when: { objectId: 'door', whenObjectState: 'unlocked' },
       },
     ],
